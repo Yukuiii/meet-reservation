@@ -90,9 +90,10 @@ export default {
 
 <style scoped>
 .login-container {
-  min-height: 100vh;
+  height: 100%;
   padding: 60rpx 40rpx;
   background-color: #f5f5f5;
+  box-sizing: border-box;
 }
 
 .login-header {

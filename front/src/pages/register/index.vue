@@ -136,9 +136,10 @@ export default {
 
 <style scoped>
 .register-container {
-  min-height: 100vh;
+  height: 100%;
   padding: 60rpx 40rpx;
   background-color: #f5f5f5;
+  box-sizing: border-box;
 }
 
 .register-header {
