@@ -1,5 +1,5 @@
 -- ============================================
--- 微信小程序会议室预约平台数据库设计
+-- 会议室预约平台数据库设计
 -- 数据库类型：MySQL 8.0+
 -- 字符集：utf8mb4
 -- ============================================
@@ -11,21 +11,22 @@ USE `meeting_reservation`;
 
 -- ============================================
 -- 1. 用户表
--- 存储微信用户基本信息及角色
+-- 存储用户基本信息及角色
 -- ============================================
 CREATE TABLE `user` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户ID',
-    `openid` VARCHAR(64) NOT NULL COMMENT '微信OpenID',
-    `union_id` VARCHAR(64) DEFAULT NULL COMMENT '微信UnionID（多平台场景）',
+    `username` VARCHAR(64) NOT NULL COMMENT '用户名',
+    `password` VARCHAR(64) NOT NULL COMMENT '密码',
     `nickname` VARCHAR(64) DEFAULT NULL COMMENT '用户昵称',
     `avatar_url` VARCHAR(512) DEFAULT NULL COMMENT '头像URL',
     `phone` VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+    `email` VARCHAR(128) DEFAULT NULL COMMENT '邮箱',
     `role` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '角色：0-普通用户，1-管理员',
     `status` TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-正常',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_openid` (`openid`),
+    UNIQUE KEY `uk_username` (`username`),
     KEY `idx_phone` (`phone`),
     KEY `idx_role` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='用户表';
