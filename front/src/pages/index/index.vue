@@ -35,6 +35,10 @@
 
     <!-- 会议室列表 -->
     <scroll-view class="room-list" scroll-y>
+      <view class="loading-state" v-if="loading">
+        <text>会议室信息加载中...</text>
+      </view>
+
       <view
         class="room-card"
         v-for="room in filteredRoomList"
@@ -66,7 +70,7 @@
       </view>
 
       <!-- 空状态 -->
-      <view class="empty-state" v-if="filteredRoomList.length === 0">
+      <view class="empty-state" v-if="!loading && filteredRoomList.length === 0">
         <text>暂无符合条件的会议室</text>
       </view>
     </scroll-view>
@@ -90,6 +94,9 @@
     <view class="picker-mask" v-if="showEquipmentPicker" @click="showEquipmentPicker = false">
       <view class="picker-content" @click.stop>
         <view class="picker-title">选择设备</view>
+        <view class="picker-option disabled" v-if="equipmentOptions.length === 0">
+          暂无设备选项
+        </view>
         <view
           class="picker-option"
           v-for="item in equipmentOptions"
@@ -105,6 +112,9 @@
     <view class="picker-mask" v-if="showLocationPicker" @click="showLocationPicker = false">
       <view class="picker-content" @click.stop>
         <view class="picker-title">选择位置</view>
+        <view class="picker-option disabled" v-if="locationOptions.length === 0">
+          暂无位置选项
+        </view>
         <view
           class="picker-option"
           v-for="item in locationOptions"
@@ -119,6 +129,8 @@
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 首页 - 会议室列表
  * @description 展示会议室列表，支持按容量、设备、位置筛选
@@ -145,89 +157,22 @@ export default {
         { label: '10-20人', value: 'medium', min: 10, max: 20 },
         { label: '20人以上', value: 'large', min: 20 }
       ],
-      // 设备选项
-      equipmentOptions: [
-        { label: '投影仪', value: 'projector' },
-        { label: '白板', value: 'whiteboard' },
-        { label: '视频会议', value: 'video' },
-        { label: '音响系统', value: 'audio' }
-      ],
-      // 位置选项
-      locationOptions: [
-        { label: 'A栋', value: 'A' },
-        { label: 'B栋', value: 'B' },
-        { label: 'C栋', value: 'C' }
-      ],
-      // 会议室列表（模拟数据）
-      roomList: [
-        {
-          id: 1,
-          name: '第一会议室',
-          capacity: 8,
-          location: 'A栋3楼',
-          locationBuilding: 'A',
-          image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=400&fit=crop',
-          equipment: ['投影仪', '白板'],
-          status: 'available',
-          statusText: '空闲'
-        },
-        {
-          id: 2,
-          name: '第二会议室',
-          capacity: 15,
-          location: 'A栋5楼',
-          locationBuilding: 'A',
-          image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=400&h=400&fit=crop',
-          equipment: ['投影仪', '视频会议', '音响系统'],
-          status: 'occupied',
-          statusText: '使用中'
-        },
-        {
-          id: 3,
-          name: '大型报告厅',
-          capacity: 50,
-          location: 'B栋1楼',
-          locationBuilding: 'B',
-          image: 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=400&h=400&fit=crop',
-          equipment: ['投影仪', '白板', '视频会议', '音响系统'],
-          status: 'available',
-          statusText: '空闲'
-        },
-        {
-          id: 4,
-          name: '小型洽谈室',
-          capacity: 6,
-          location: 'B栋2楼',
-          locationBuilding: 'B',
-          image: 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=400&h=400&fit=crop',
-          equipment: ['白板'],
-          status: 'reserved',
-          statusText: '已预约'
-        },
-        {
-          id: 5,
-          name: '多功能会议室',
-          capacity: 25,
-          location: 'C栋3楼',
-          locationBuilding: 'C',
-          image: 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=400&h=400&fit=crop',
-          equipment: ['投影仪', '视频会议', '音响系统'],
-          status: 'available',
-          statusText: '空闲'
-        },
-        {
-          id: 6,
-          name: '培训室',
-          capacity: 30,
-          location: 'C栋4楼',
-          locationBuilding: 'C',
-          image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=400&h=400&fit=crop',
-          equipment: ['投影仪', '白板', '音响系统'],
-          status: 'occupied',
-          statusText: '使用中'
-        }
-      ]
+      // 设备选项（根据接口数据动态生成）
+      equipmentOptions: [],
+      // 位置选项（根据接口数据动态生成）
+      locationOptions: [],
+      // 会议室列表
+      roomList: [],
+      // 加载状态
+      loading: false
     }
+  },
+
+  /**
+   * 页面加载时拉取会议室列表数据。
+   */
+  onLoad() {
+    this.loadRoomList()
   },
 
   computed: {
@@ -240,9 +185,10 @@ export default {
 
       // 按关键词搜索
       if (this.searchKeyword) {
-        const keyword = this.searchKeyword.toLowerCase()
+        const keyword = this.searchKeyword.trim().toLowerCase()
         result = result.filter(room =>
-          room.name.toLowerCase().includes(keyword)
+          (room.name || '').toLowerCase().includes(keyword) ||
+          (room.location || '').toLowerCase().includes(keyword)
         )
       }
 
@@ -254,7 +200,7 @@ export default {
         if (option) {
           result = result.filter(room => {
             if (option.max && !option.min) {
-              return room.capacity < option.max
+              return room.capacity <= option.max
             } else if (option.min && option.max) {
               return room.capacity >= option.min && room.capacity <= option.max
             } else if (option.min && !option.max) {
@@ -267,14 +213,10 @@ export default {
 
       // 按设备筛选
       if (this.selectedEquipmentValue) {
-        const equipName = this.equipmentOptions.find(
-          o => o.value === this.selectedEquipmentValue
-        )?.label
-        if (equipName) {
-          result = result.filter(room =>
-            room.equipment.includes(equipName)
+        result = result.filter(room =>
+          Array.isArray(room.equipment) &&
+            room.equipment.includes(this.selectedEquipmentValue)
           )
-        }
       }
 
       // 按位置筛选
@@ -289,6 +231,68 @@ export default {
   },
 
   methods: {
+    /**
+     * 拉取会议室列表。
+     */
+    async loadRoomList() {
+      this.loading = true
+      try {
+        const list = await request({
+          url: '/api/meeting-rooms',
+          method: 'GET'
+        })
+        this.roomList = Array.isArray(list) ? list : []
+        this.buildFilterOptions()
+      } catch (error) {
+        uni.showToast({ title: error.message || '加载会议室失败', icon: 'none' })
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 根据会议室数据构建筛选选项。
+     */
+    buildFilterOptions() {
+      const equipmentSet = new Set()
+      const buildingSet = new Set()
+
+      // 聚合所有设备与楼栋，保证筛选项与服务端数据一致。
+      this.roomList.forEach(room => {
+        if (Array.isArray(room.equipment)) {
+          room.equipment.forEach(item => {
+            if (item) {
+              equipmentSet.add(item)
+            }
+          })
+        }
+        if (room.locationBuilding) {
+          buildingSet.add(room.locationBuilding)
+        }
+      })
+
+      this.equipmentOptions = Array.from(equipmentSet)
+        .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+        .map(item => ({ label: item, value: item }))
+
+      this.locationOptions = Array.from(buildingSet)
+        .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+        .map(item => ({
+          label: item.endsWith('栋') ? item : `${item}栋`,
+          value: item
+        }))
+
+      // 如果接口返回的数据中不存在当前已选条件，自动清空，避免筛选锁死。
+      if (this.selectedEquipmentValue && !equipmentSet.has(this.selectedEquipmentValue)) {
+        this.selectedEquipment = ''
+        this.selectedEquipmentValue = ''
+      }
+      if (this.selectedLocationValue && !buildingSet.has(this.selectedLocationValue)) {
+        this.selectedLocation = ''
+        this.selectedLocationValue = ''
+      }
+    },
+
     /**
      * 处理搜索输入
      */
@@ -510,6 +514,13 @@ export default {
   font-size: 28rpx;
 }
 
+.loading-state {
+  text-align: center;
+  padding: 100rpx 0;
+  color: #666;
+  font-size: 28rpx;
+}
+
 /* 选择器弹窗 */
 .picker-mask {
   position: fixed;
@@ -547,5 +558,9 @@ export default {
 
 .picker-option:active {
   background-color: #f5f5f5;
+}
+
+.picker-option.disabled {
+  color: #999;
 }
 </style>
