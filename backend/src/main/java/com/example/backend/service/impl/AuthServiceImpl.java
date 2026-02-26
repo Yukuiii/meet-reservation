@@ -87,6 +87,7 @@ public class AuthServiceImpl implements AuthService {
     public LoginResponse login(LoginRequest loginRequest) {
         String username = safeTrim(loginRequest == null ? null : loginRequest.getUsername());
         String password = safeTrim(loginRequest == null ? null : loginRequest.getPassword());
+        String loginType = normalizeLoginType(loginRequest == null ? null : loginRequest.getLoginType());
 
         if (username.isEmpty()) {
             throw new IllegalArgumentException("用户名不能为空");
@@ -113,6 +114,12 @@ public class AuthServiceImpl implements AuthService {
         }
         if (!Objects.equals(user.getStatus(), 1)) {
             throw new IllegalArgumentException("账号已被禁用");
+        }
+        if ("admin".equals(loginType) && !Objects.equals(user.getRole(), 1)) {
+            throw new IllegalArgumentException("当前账号不是管理员，无法使用管理员登录");
+        }
+        if ("user".equals(loginType) && Objects.equals(user.getRole(), 1)) {
+            throw new IllegalArgumentException("当前账号为管理员，请切换为管理员登录");
         }
 
         LoginUserInfo userInfo = new LoginUserInfo();
@@ -164,6 +171,26 @@ public class AuthServiceImpl implements AuthService {
      */
     private String safeTrim(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /**
+     * 标准化登录类型。
+     *
+     * @param loginType 原始登录类型
+     * @return user 或 admin
+     */
+    private String normalizeLoginType(String loginType) {
+        String finalLoginType = safeTrim(loginType);
+        if (finalLoginType.isEmpty()) {
+            return "user";
+        }
+        if ("user".equalsIgnoreCase(finalLoginType)) {
+            return "user";
+        }
+        if ("admin".equalsIgnoreCase(finalLoginType)) {
+            return "admin";
+        }
+        throw new IllegalArgumentException("登录类型不合法");
     }
 
     /**

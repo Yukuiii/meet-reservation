@@ -185,6 +185,7 @@ export default {
             // 清除登录状态
             uni.removeStorageSync('token')
             uni.removeStorageSync('userInfo')
+            uni.removeStorageSync('loginType')
             // 跳转到登录页
             uni.reLaunch({ url: '/pages/login/index' })
           }

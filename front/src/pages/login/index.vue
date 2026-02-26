@@ -6,7 +6,23 @@
     </view>
 
     <view class="login-form">
-      <!-- 用户名输入框 -->
+      <view class="login-type-group">
+        <view
+          class="login-type-item"
+          :class="{ active: formData.loginType === 'user' }"
+          @click="switchLoginType('user')"
+        >
+          用户登录
+        </view>
+        <view
+          class="login-type-item"
+          :class="{ active: formData.loginType === 'admin' }"
+          @click="switchLoginType('admin')"
+        >
+          管理员登录
+        </view>
+      </view>
+
       <view class="form-item">
         <input
           class="input"
@@ -17,7 +33,6 @@
         />
       </view>
 
-      <!-- 密码输入框 -->
       <view class="form-item">
         <input
           class="input"
@@ -28,13 +43,11 @@
         />
       </view>
 
-      <!-- 登录按钮 -->
       <button class="login-btn" :disabled="loading" @click="handleLogin">
         {{ loading ? '登录中...' : '登录' }}
       </button>
 
-      <!-- 注册链接 -->
-      <view class="register-link">
+      <view class="register-link" v-if="formData.loginType === 'user'">
         <text>还没有账号？</text>
         <text class="link" @click="goToRegister">立即注册</text>
       </view>
@@ -47,7 +60,7 @@ import { request } from '../../utils/request'
 
 /**
  * 登录页面
- * @description 用户登录功能，包含用户名密码输入和登录验证
+ * @description 支持用户登录和管理员登录
  */
 export default {
   data() {
@@ -55,7 +68,8 @@ export default {
       // 表单数据
       formData: {
         username: '',
-        password: ''
+        password: '',
+        loginType: 'user'
       },
       // 提交状态
       loading: false
@@ -74,15 +88,25 @@ export default {
 
   methods: {
     /**
+     * 切换登录类型。
+     * @param {String} loginType 登录类型
+     */
+    switchLoginType(loginType) {
+      if (this.loading) {
+        return
+      }
+      this.formData.loginType = loginType
+    },
+
+    /**
      * 处理登录逻辑
      * @description 验证表单并提交登录请求
      */
     async handleLogin() {
-      const { username, password } = this.formData
+      const { username, password, loginType } = this.formData
       const finalUsername = username.trim()
       const finalPassword = password.trim()
 
-      // 表单验证
       if (!finalUsername) {
         uni.showToast({ title: '请输入用户名', icon: 'none' })
         return
@@ -102,16 +126,22 @@ export default {
           method: 'POST',
           data: {
             username: finalUsername,
-            password: finalPassword
+            password: finalPassword,
+            loginType
           }
         })
 
         uni.setStorageSync('token', data.token)
         uni.setStorageSync('userInfo', data.userInfo || {})
+        uni.setStorageSync('loginType', loginType)
 
         uni.showToast({ title: '登录成功', icon: 'success' })
         setTimeout(() => {
-          uni.reLaunch({ url: '/pages/index/index' })
+          if (loginType === 'admin') {
+            uni.reLaunch({ url: '/pages/admin/index' })
+          } else {
+            uni.reLaunch({ url: '/pages/index/index' })
+          }
         }, 800)
       } catch (error) {
         uni.showToast({ title: error.message || '登录失败', icon: 'none' })
@@ -161,6 +191,29 @@ export default {
   background-color: #fff;
   border-radius: 20rpx;
   padding: 40rpx;
+}
+
+.login-type-group {
+  display: flex;
+  margin-bottom: 30rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background-color: #f3f4f6;
+}
+
+.login-type-item {
+  flex: 1;
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #666;
+}
+
+.login-type-item.active {
+  background-color: #007aff;
+  color: #fff;
+  font-weight: bold;
 }
 
 .form-item {

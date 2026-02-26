@@ -35,6 +35,12 @@
 			"style": {
 				"navigationBarTitleText": "注册"
 			}
+		},
+		{
+			"path": "pages/admin/index",
+			"style": {
+				"navigationBarTitleText": "管理员中心"
+			}
 		}
 	],
 	"globalStyle": {
