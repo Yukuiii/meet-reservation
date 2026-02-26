@@ -27,6 +27,10 @@
 
     <!-- 预约列表 -->
     <scroll-view class="booking-list" scroll-y>
+      <view class="loading-state" v-if="loading">
+        <text>正在加载预约记录...</text>
+      </view>
+
       <view
         class="booking-card"
         v-for="item in currentList"
@@ -35,7 +39,7 @@
       >
         <view class="card-header">
           <text class="room-name">{{ item.roomName }}</text>
-          <text class="status" :class="item.status">{{ item.statusText }}</text>
+          <text class="status" :class="item.statusKey">{{ item.statusText }}</text>
         </view>
         <view class="card-body">
           <view class="info-row">
@@ -47,11 +51,15 @@
             <text class="value">{{ item.timeSlot }}</text>
           </view>
           <view class="info-row">
+            <text class="label">参与人数：</text>
+            <text class="value">{{ item.attendees }}人</text>
+          </view>
+          <view class="info-row">
             <text class="label">预约事由：</text>
-            <text class="value">{{ item.reason }}</text>
+            <text class="value">{{ item.purpose }}</text>
           </view>
         </view>
-        <view class="card-footer" v-if="item.status === 'pending' || item.status === 'approved'">
+        <view class="card-footer" v-if="item.statusKey === 'pending' || item.statusKey === 'approved'">
           <button
             class="cancel-btn"
             size="mini"
@@ -63,7 +71,7 @@
       </view>
 
       <!-- 空状态 -->
-      <view class="empty-state" v-if="currentList.length === 0">
+      <view class="empty-state" v-if="!loading && currentList.length === 0">
         <text>暂无预约记录</text>
       </view>
     </scroll-view>
@@ -71,84 +79,44 @@
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 我的预约页面
- * @description 展示用户的预约记录，支持按状态筛选和取消预约
+ * @description 展示用户预约记录，支持按状态筛选、取消预约与查看详情
  */
 export default {
   data() {
     return {
       // 当前选中的标签
       currentTab: 'pending',
-      // 预约列表（模拟数据）
-      bookingList: [
-        {
-          id: 1,
-          roomName: '第一会议室',
-          date: '2026-01-20',
-          timeSlot: '09:00-10:00',
-          reason: '项目周会',
-          attendees: 6,
-          status: 'pending',
-          statusText: '待审核'
-        },
-        {
-          id: 2,
-          roomName: '大型报告厅',
-          date: '2026-01-21',
-          timeSlot: '14:00-16:00',
-          reason: '季度总结会议',
-          attendees: 35,
-          status: 'approved',
-          statusText: '已通过'
-        },
-        {
-          id: 3,
-          roomName: '小型洽谈室',
-          date: '2026-01-19',
-          timeSlot: '10:00-11:00',
-          reason: '客户洽谈',
-          attendees: 4,
-          status: 'approved',
-          statusText: '已通过'
-        },
-        {
-          id: 4,
-          roomName: '第二会议室',
-          date: '2026-01-18',
-          timeSlot: '15:00-17:00',
-          reason: '技术分享会',
-          attendees: 12,
-          status: 'cancelled',
-          statusText: '已取消'
-        },
-        {
-          id: 5,
-          roomName: '培训室',
-          date: '2026-01-22',
-          timeSlot: '09:00-12:00',
-          reason: '新员工培训',
-          attendees: 20,
-          status: 'pending',
-          statusText: '待审核'
-        }
-      ]
+      // 预约列表
+      bookingList: [],
+      // 加载状态
+      loading: false
     }
+  },
+
+  /**
+   * 页面展示时刷新预约列表。
+   */
+  onShow() {
+    this.loadBookingList()
   },
 
   computed: {
     /**
-     * 根据当前标签筛选预约列表
-     * @returns {Array} 筛选后的预约列表
+     * 根据当前标签筛选预约列表。
+     * @returns {Array} 筛选结果
      */
     currentList() {
-      return this.bookingList.filter(item => item.status === this.currentTab)
+      return this.bookingList.filter(item => item.statusKey === this.currentTab)
     }
   },
 
   methods: {
     /**
-     * 切换标签
+     * 切换标签。
      * @param {String} tab 标签名称
      */
     switchTab(tab) {
@@ -156,31 +124,120 @@ export default {
     },
 
     /**
-     * 跳转到预约详情
-     * @param {Number} id 预约ID
+     * 获取当前登录用户ID。
+     * @returns {Number|null}
      */
-    goToDetail(id) {
-      // TODO: 跳转到预约详情页
-      uni.showToast({ title: '查看详情', icon: 'none' })
+    getCurrentUserId() {
+      const userInfo = uni.getStorageSync('userInfo') || {}
+      const userId = Number(userInfo.id)
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return null
+      }
+      return userId
     },
 
     /**
-     * 取消预约
+     * 加载当前用户预约列表。
+     */
+    async loadBookingList() {
+      const userId = this.getCurrentUserId()
+      if (!userId) {
+        uni.showToast({ title: '请先登录', icon: 'none' })
+        setTimeout(() => {
+          uni.reLaunch({ url: '/pages/login/index' })
+        }, 600)
+        return
+      }
+
+      this.loading = true
+      try {
+        const list = await request({
+          url: `/api/reservations/my?userId=${userId}`,
+          method: 'GET'
+        })
+        this.bookingList = Array.isArray(list) ? list : []
+      } catch (error) {
+        uni.showToast({ title: error.message || '预约记录加载失败', icon: 'none' })
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 查看预约详情。
+     * @param {Number} id 预约ID
+     */
+    async goToDetail(id) {
+      const userId = this.getCurrentUserId()
+      if (!userId) {
+        return
+      }
+
+      try {
+        const detail = await request({
+          url: `/api/reservations/${id}?userId=${userId}`,
+          method: 'GET'
+        })
+
+        const lines = [
+          `预约编号：${detail.reservationNo || '-'}`,
+          `会议室：${detail.roomName || '-'}`,
+          `日期：${detail.date || '-'}`,
+          `时段：${detail.timeSlot || '-'}`,
+          `参与人数：${detail.attendees || 0}人`,
+          `状态：${detail.statusText || '-'}`,
+          `事由：${detail.purpose || '-'}`
+        ]
+        if (detail.cancelReason) {
+          lines.push(`取消原因：${detail.cancelReason}`)
+        }
+        if (detail.rejectReason) {
+          lines.push(`拒绝原因：${detail.rejectReason}`)
+        }
+        if (detail.remark) {
+          lines.push(`备注：${detail.remark}`)
+        }
+
+        uni.showModal({
+          title: '预约详情',
+          content: lines.join('\n'),
+          showCancel: false
+        })
+      } catch (error) {
+        uni.showToast({ title: error.message || '详情加载失败', icon: 'none' })
+      }
+    },
+
+    /**
+     * 取消预约。
      * @param {Number} id 预约ID
      */
     cancelBooking(id) {
+      const userId = this.getCurrentUserId()
+      if (!userId) {
+        return
+      }
+
       uni.showModal({
         title: '提示',
         content: '确定要取消该预约吗？',
-        success: (res) => {
-          if (res.confirm) {
-            // 更新预约状态
-            const booking = this.bookingList.find(item => item.id === id)
-            if (booking) {
-              booking.status = 'cancelled'
-              booking.statusText = '已取消'
-            }
+        success: async (res) => {
+          if (!res.confirm) {
+            return
+          }
+          try {
+            await request({
+              url: `/api/reservations/${id}/cancel`,
+              method: 'POST',
+              data: {
+                userId,
+                cancelReason: '用户主动取消'
+              }
+            })
             uni.showToast({ title: '已取消预约', icon: 'success' })
+            this.loadBookingList()
+          } catch (error) {
+            uni.showToast({ title: error.message || '取消失败', icon: 'none' })
           }
         }
       })
@@ -235,6 +292,13 @@ export default {
 .booking-list {
   flex: 1;
   padding: 20rpx;
+}
+
+.loading-state {
+  text-align: center;
+  color: #999;
+  font-size: 28rpx;
+  padding: 80rpx 0;
 }
 
 .booking-card {

@@ -37,10 +37,21 @@
       </view>
     </view>
 
-    <!-- 今日预约情况 -->
+    <!-- 占用情况 -->
     <view class="schedule-section">
-      <view class="section-title">今日预约情况</view>
-      <view class="time-slots">
+      <view class="section-title">实时占用状态</view>
+      <view class="date-row">
+        <text class="date-label">预约日期：</text>
+        <picker mode="date" :value="selectedDate" :start="minDate" @change="handleDateChange">
+          <view class="date-value">{{ selectedDate }}</view>
+        </picker>
+      </view>
+
+      <view class="loading-state" v-if="scheduleLoading">
+        <text>正在加载占用状态...</text>
+      </view>
+
+      <view class="time-slots" v-else>
         <view
           class="time-slot"
           v-for="(slot, index) in timeSlots"
@@ -49,17 +60,17 @@
           @click="selectTimeSlot(index)"
         >
           <text class="slot-time">{{ slot.time }}</text>
-          <text class="slot-status">{{ slot.booked ? '已预约' : '可预约' }}</text>
+          <text class="slot-status">{{ slot.booked ? '已占用' : '可预约' }}</text>
         </view>
       </view>
     </view>
 
     <!-- 预约表单 -->
-    <view class="booking-section" v-if="selectedSlots.length > 0">
+    <view class="booking-section">
       <view class="section-title">预约信息</view>
       <view class="form-item">
         <text class="label">预约时段：</text>
-        <text class="value">{{ selectedTimeText }}</text>
+        <text class="value">{{ selectedTimeText || '请选择时段' }}</text>
       </view>
       <view class="form-item">
         <text class="label">预约事由：</text>
@@ -85,198 +96,251 @@
 
     <!-- 底部按钮 -->
     <view class="bottom-bar">
-      <button class="booking-btn" @click="submitBooking">立即预约</button>
+      <button class="booking-btn" :disabled="submitting" @click="submitBooking">
+        {{ submitting ? '提交中...' : '立即预约' }}
+      </button>
     </view>
   </view>
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 会议室详情页
- * @description 展示会议室详细信息，支持查看预约情况和提交预约
+ * @description 展示会议室详细信息，支持查看占用状态和提交预约
  */
 export default {
   data() {
     return {
       // 会议室ID
       roomId: null,
-      // 会议室信息（模拟数据）
+      // 会议室信息
       roomInfo: {
-        id: 1,
-        name: '第一会议室',
-        capacity: 8,
-        location: 'A栋3楼301室',
+        id: null,
+        name: '',
+        capacity: 0,
+        location: '',
         image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop',
-        equipment: ['投影仪', '白板', '视频会议系统'],
+        equipment: [],
         status: 'available',
-        statusText: '空闲',
-        description: '适合小型团队会议，配备高清投影仪和电子白板，支持远程视频会议。'
+        statusText: '可预约',
+        description: ''
       },
+      // 预约日期
+      selectedDate: '',
+      // 最小可预约日期
+      minDate: '',
       // 时间段列表
-      timeSlots: [
-        { time: '08:00-09:00', booked: false, selected: false },
-        { time: '09:00-10:00', booked: true, selected: false },
-        { time: '10:00-11:00', booked: true, selected: false },
-        { time: '11:00-12:00', booked: false, selected: false },
-        { time: '13:00-14:00', booked: false, selected: false },
-        { time: '14:00-15:00', booked: true, selected: false },
-        { time: '15:00-16:00', booked: false, selected: false },
-        { time: '16:00-17:00', booked: false, selected: false },
-        { time: '17:00-18:00', booked: false, selected: false }
-      ],
+      timeSlots: [],
       // 预约表单
       bookingForm: {
         reason: '',
         attendees: ''
-      }
+      },
+      // 占用状态加载中
+      scheduleLoading: false,
+      // 提交中
+      submitting: false
     }
   },
 
   computed: {
     /**
-     * 已选择的时间段
-     * @returns {Array} 选中的时间段索引数组
+     * 已选择的时间段（按索引升序）。
+     * @returns {Array}
      */
     selectedSlots() {
       return this.timeSlots
         .map((slot, index) => ({ ...slot, index }))
         .filter(slot => slot.selected)
+        .sort((a, b) => a.index - b.index)
     },
 
     /**
-     * 已选择的时间段文本
-     * @returns {String} 格式化的时间段文本
+     * 已选择时段文案。
+     * @returns {String}
      */
     selectedTimeText() {
-      return this.selectedSlots.map(slot => slot.time).join('、')
+      if (this.selectedSlots.length === 0) {
+        return ''
+      }
+      const start = this.selectedSlots[0].start
+      const end = this.selectedSlots[this.selectedSlots.length - 1].end
+      return `${start}-${end}`
     }
   },
 
-  onLoad(options) {
-    if (options.id) {
-      this.roomId = options.id
-      this.loadRoomDetail(options.id)
+  /**
+   * 页面初始化。
+   * @param {Object} options 页面参数
+   */
+  async onLoad(options) {
+    if (!options.id) {
+      uni.showToast({ title: '会议室参数错误', icon: 'none' })
+      return
     }
+
+    this.roomId = Number(options.id)
+    const today = this.formatDate(new Date())
+    this.selectedDate = today
+    this.minDate = today
+    this.timeSlots = this.createDefaultTimeSlots()
+
+    await this.loadRoomDetail()
+    await this.loadRoomSchedule()
   },
 
   methods: {
     /**
-     * 加载会议室详情
-     * @param {Number} id 会议室ID
+     * 创建默认时间段。
+     * @returns {Array}
      */
-    loadRoomDetail(id) {
-      // 模拟数据，根据ID返回不同的会议室信息
-      const roomData = {
-        1: {
-          id: 1,
-          name: '第一会议室',
-          capacity: 8,
-          location: 'A栋3楼301室',
-          image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop',
-          equipment: ['投影仪', '白板'],
-          status: 'available',
-          statusText: '空闲',
-          description: '适合小型团队会议，配备高清投影仪和电子白板。'
-        },
-        2: {
-          id: 2,
-          name: '第二会议室',
-          capacity: 15,
-          location: 'A栋5楼502室',
-          image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800&h=600&fit=crop',
-          equipment: ['投影仪', '视频会议', '音响系统'],
-          status: 'occupied',
-          statusText: '使用中',
-          description: '中型会议室，配备专业视频会议系统，适合跨地区远程会议。'
-        },
-        3: {
-          id: 3,
-          name: '大型报告厅',
-          capacity: 50,
-          location: 'B栋1楼101室',
-          image: 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=800&h=600&fit=crop',
-          equipment: ['投影仪', '白板', '视频会议', '音响系统'],
-          status: 'available',
-          statusText: '空闲',
-          description: '大型报告厅，可容纳50人，适合公司大型会议、培训和演讲活动。'
-        },
-        4: {
-          id: 4,
-          name: '小型洽谈室',
-          capacity: 6,
-          location: 'B栋2楼205室',
-          image: 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=800&h=600&fit=crop',
-          equipment: ['白板'],
-          status: 'reserved',
-          statusText: '已预约',
-          description: '温馨小型洽谈室，适合商务洽谈和小组讨论。'
-        },
-        5: {
-          id: 5,
-          name: '多功能会议室',
-          capacity: 25,
-          location: 'C栋3楼308室',
-          image: 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=800&h=600&fit=crop',
-          equipment: ['投影仪', '视频会议', '音响系统'],
-          status: 'available',
-          statusText: '空闲',
-          description: '多功能会议室，灵活布局，可根据需要调整座位排列。'
-        },
-        6: {
-          id: 6,
-          name: '培训室',
-          capacity: 30,
-          location: 'C栋4楼401室',
-          image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&h=600&fit=crop',
-          equipment: ['投影仪', '白板', '音响系统'],
-          status: 'occupied',
-          statusText: '使用中',
-          description: '专业培训室，配备培训桌椅，适合内部培训和工作坊。'
-        }
-      }
+    createDefaultTimeSlots() {
+      const templates = [
+        ['08:00', '09:00'],
+        ['09:00', '10:00'],
+        ['10:00', '11:00'],
+        ['11:00', '12:00'],
+        ['13:00', '14:00'],
+        ['14:00', '15:00'],
+        ['15:00', '16:00'],
+        ['16:00', '17:00'],
+        ['17:00', '18:00']
+      ]
 
-      if (roomData[id]) {
-        this.roomInfo = roomData[id]
+      return templates.map(item => ({
+        start: item[0],
+        end: item[1],
+        time: `${item[0]}-${item[1]}`,
+        booked: false,
+        selected: false
+      }))
+    },
+
+    /**
+     * 加载会议室详情。
+     */
+    async loadRoomDetail() {
+      try {
+        const room = await request({
+          url: `/api/meeting-rooms/${this.roomId}`,
+          method: 'GET'
+        })
+
+        this.roomInfo = {
+          id: room.id,
+          name: room.name || '',
+          capacity: room.capacity || 0,
+          location: room.location || '',
+          image: room.image || this.roomInfo.image,
+          equipment: Array.isArray(room.equipment) ? room.equipment : [],
+          status: room.status || 'available',
+          statusText: room.statusText || '可预约',
+          description: room.description || ''
+        }
+      } catch (error) {
+        uni.showToast({ title: error.message || '会议室加载失败', icon: 'none' })
       }
     },
 
     /**
-     * 选择时间段
+     * 加载指定日期的占用状态。
+     */
+    async loadRoomSchedule() {
+      this.scheduleLoading = true
+      try {
+        const scheduleList = await request({
+          url: `/api/reservations/schedule?roomId=${this.roomId}&date=${this.selectedDate}`,
+          method: 'GET'
+        })
+
+        this.syncSlotBookedState(Array.isArray(scheduleList) ? scheduleList : [])
+      } catch (error) {
+        uni.showToast({ title: error.message || '占用状态加载失败', icon: 'none' })
+        this.syncSlotBookedState([])
+      } finally {
+        this.scheduleLoading = false
+      }
+    },
+
+    /**
+     * 将后端占用时段映射到前端时间块。
+     * @param {Array} scheduleList 占用时段列表
+     */
+    syncSlotBookedState(scheduleList) {
+      const nextSlots = this.createDefaultTimeSlots()
+
+      // 任一占用区间与当前时间块有重叠，即视为该时间块不可预约。
+      nextSlots.forEach(slot => {
+        slot.booked = scheduleList.some(item =>
+          this.isTimeOverlap(slot.start, slot.end, item.startTime, item.endTime)
+        )
+      })
+
+      this.timeSlots = nextSlots
+    },
+
+    /**
+     * 判断两个时间区间是否重叠。
+     * @param {String} startA 区间A开始 HH:mm
+     * @param {String} endA 区间A结束 HH:mm
+     * @param {String} startB 区间B开始 HH:mm
+     * @param {String} endB 区间B结束 HH:mm
+     * @returns {Boolean}
+     */
+    isTimeOverlap(startA, endA, startB, endB) {
+      return startA < endB && endA > startB
+    },
+
+    /**
+     * 切换预约日期。
+     * @param {Object} event 日期选择事件
+     */
+    async handleDateChange(event) {
+      this.selectedDate = event.detail.value
+      this.bookingForm = { reason: '', attendees: '' }
+      await this.loadRoomSchedule()
+    },
+
+    /**
+     * 选择时间段。
      * @param {Number} index 时间段索引
      */
     selectTimeSlot(index) {
       const slot = this.timeSlots[index]
-      // 已预约的时间段不可选择
       if (slot.booked) {
-        uni.showToast({ title: '该时段已被预约', icon: 'none' })
+        uni.showToast({ title: '该时段已被占用', icon: 'none' })
         return
       }
       slot.selected = !slot.selected
     },
 
     /**
-     * 提交预约
+     * 提交预约。
      */
-    submitBooking() {
-      // 验证是否选择了时间段
+    async submitBooking() {
       if (this.selectedSlots.length === 0) {
         uni.showToast({ title: '请选择预约时段', icon: 'none' })
         return
       }
 
-      // 验证预约事由
-      if (!this.bookingForm.reason.trim()) {
+      if (!this.isSelectedSlotsContinuous()) {
+        uni.showToast({ title: '请选择连续的预约时段', icon: 'none' })
+        return
+      }
+
+      const reason = this.bookingForm.reason.trim()
+      if (!reason) {
         uni.showToast({ title: '请输入预约事由', icon: 'none' })
         return
       }
 
-      // 验证参与人数
-      if (!this.bookingForm.attendees) {
-        uni.showToast({ title: '请输入参与人数', icon: 'none' })
+      const attendees = Number(this.bookingForm.attendees)
+      if (!Number.isInteger(attendees) || attendees <= 0) {
+        uni.showToast({ title: '参与人数需为正整数', icon: 'none' })
         return
       }
-
-      const attendees = parseInt(this.bookingForm.attendees)
       if (attendees > this.roomInfo.capacity) {
         uni.showToast({
           title: `参与人数不能超过会议室容量(${this.roomInfo.capacity}人)`,
@@ -285,19 +349,77 @@ export default {
         return
       }
 
-      // TODO: 调用预约接口
-      uni.showToast({ title: '预约提交成功', icon: 'success' })
+      const userInfo = uni.getStorageSync('userInfo') || {}
+      if (!userInfo.id) {
+        uni.showToast({ title: '请先登录后再预约', icon: 'none' })
+        setTimeout(() => {
+          uni.reLaunch({ url: '/pages/login/index' })
+        }, 600)
+        return
+      }
 
-      // 重置表单
-      setTimeout(() => {
-        this.bookingForm = { reason: '', attendees: '' }
-        this.timeSlots.forEach(slot => {
-          if (slot.selected) {
-            slot.selected = false
-            slot.booked = true
+      if (this.submitting) {
+        return
+      }
+
+      const startTime = this.selectedSlots[0].start
+      const endTime = this.selectedSlots[this.selectedSlots.length - 1].end
+
+      this.submitting = true
+      try {
+        await request({
+          url: '/api/reservations',
+          method: 'POST',
+          data: {
+            userId: userInfo.id,
+            roomId: this.roomId,
+            title: reason,
+            purpose: reason,
+            attendeeCount: attendees,
+            reservationDate: this.selectedDate,
+            startTime: `${startTime}:00`,
+            endTime: `${endTime}:00`
           }
         })
-      }, 1500)
+
+        uni.showToast({ title: '预约提交成功', icon: 'success' })
+        this.bookingForm = { reason: '', attendees: '' }
+        await this.loadRoomSchedule()
+      } catch (error) {
+        uni.showToast({ title: error.message || '预约提交失败', icon: 'none' })
+      } finally {
+        this.submitting = false
+      }
+    },
+
+    /**
+     * 判断选择时段是否连续。
+     * @returns {Boolean}
+     */
+    isSelectedSlotsContinuous() {
+      if (this.selectedSlots.length <= 1) {
+        return true
+      }
+
+      // 若索引不是连续递增，则代表中间有未选时段。
+      for (let i = 1; i < this.selectedSlots.length; i += 1) {
+        if (this.selectedSlots[i].index !== this.selectedSlots[i - 1].index + 1) {
+          return false
+        }
+      }
+      return true
+    },
+
+    /**
+     * 日期格式化为 yyyy-MM-dd。
+     * @param {Date} date 日期对象
+     * @returns {String}
+     */
+    formatDate(date) {
+      const year = date.getFullYear()
+      const month = `${date.getMonth() + 1}`.padStart(2, '0')
+      const day = `${date.getDate()}`.padStart(2, '0')
+      return `${year}-${month}-${day}`
     }
   }
 }
@@ -389,7 +511,7 @@ export default {
   margin-bottom: 8rpx;
 }
 
-/* 预约情况 */
+/* 占用情况 */
 .schedule-section {
   background-color: #fff;
   padding: 30rpx;
@@ -401,6 +523,32 @@ export default {
   font-weight: bold;
   color: #333;
   margin-bottom: 20rpx;
+}
+
+.date-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+  font-size: 28rpx;
+}
+
+.date-label {
+  color: #666;
+  width: 160rpx;
+  flex-shrink: 0;
+}
+
+.date-value {
+  padding: 10rpx 20rpx;
+  background-color: #f5f5f5;
+  border-radius: 8rpx;
+  color: #007aff;
+}
+
+.loading-state {
+  text-align: center;
+  color: #999;
+  padding: 40rpx 0;
 }
 
 .time-slots {
@@ -520,5 +668,9 @@ export default {
 
 .booking-btn::after {
   border: none;
+}
+
+.booking-btn[disabled] {
+  opacity: 0.7;
 }
 </style>

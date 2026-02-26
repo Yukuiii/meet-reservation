@@ -5,9 +5,9 @@
 -- ============================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS `meeting_reservation` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE DATABASE IF NOT EXISTS `meeting` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 
-USE `meeting_reservation`;
+USE `meeting`;
 
 -- ============================================
 -- 1. 用户表
@@ -135,13 +135,114 @@ CREATE TABLE `reservation` (
 -- 初始化数据
 -- ============================================
 
--- 插入默认设备类型
-INSERT INTO `equipment` (`name`, `icon`, `description`) VALUES
-('投影仪', NULL, '高清投影设备'),
-('白板', NULL, '可书写白板'),
-('电视', NULL, '大屏显示器'),
-('视频会议系统', NULL, '远程视频会议设备'),
-('音响系统', NULL, '扩音设备'),
-('空调', NULL, '独立空调'),
-('电话会议系统', NULL, '多方电话会议设备'),
-('无线投屏', NULL, '支持无线投屏');
+-- 插入默认设备类型（可重复执行）
+INSERT INTO `equipment` (`id`, `name`, `icon`, `description`, `status`) VALUES
+(1, '投影仪', NULL, '高清投影设备', 1),
+(2, '白板', NULL, '可书写白板', 1),
+(3, '电视', NULL, '大屏显示器', 1),
+(4, '视频会议系统', NULL, '远程视频会议设备', 1),
+(5, '音响系统', NULL, '扩音设备', 1),
+(6, '空调', NULL, '独立空调', 1),
+(7, '电话会议系统', NULL, '多方电话会议设备', 1),
+(8, '无线投屏', NULL, '支持无线投屏', 1)
+ON DUPLICATE KEY UPDATE
+`name` = VALUES(`name`),
+`icon` = VALUES(`icon`),
+`description` = VALUES(`description`),
+`status` = VALUES(`status`);
+
+-- 插入初始用户（密码均为SHA-256，明文：admin123 / 123456）
+INSERT INTO `user` (`id`, `username`, `password`, `nickname`, `phone`, `email`, `role`, `status`) VALUES
+(1, 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '13800000001', 'admin@meeting.com', 1, 1),
+(2, 'zhangsan', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '张三', '13800000002', 'zhangsan@meeting.com', 0, 1),
+(3, 'lisi', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '李四', '13800000003', 'lisi@meeting.com', 0, 1)
+ON DUPLICATE KEY UPDATE
+`password` = VALUES(`password`),
+`nickname` = VALUES(`nickname`),
+`phone` = VALUES(`phone`),
+`email` = VALUES(`email`),
+`role` = VALUES(`role`),
+`status` = VALUES(`status`);
+
+-- 插入初始会议室
+INSERT INTO `meeting_room` (`id`, `name`, `capacity`, `location`, `building`, `floor`, `description`, `cover_image`, `status`, `sort_order`) VALUES
+(1, '第一会议室', 8, 'A栋3楼301室', 'A', '3', '适合小型团队例会，配备基础投影设备。', 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop', 1, 100),
+(2, '第二会议室', 15, 'A栋5楼502室', 'A', '5', '中型会议室，适合跨团队评审。', 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800&h=600&fit=crop', 1, 90),
+(3, '大型报告厅', 50, 'B栋1楼101室', 'B', '1', '大型宣讲与培训场地，支持远程会议。', 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=800&h=600&fit=crop', 1, 120),
+(4, '小型洽谈室', 6, 'B栋2楼205室', 'B', '2', '适合商务洽谈及一对一会议。', 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=800&h=600&fit=crop', 1, 80),
+(5, '多功能会议室', 25, 'C栋3楼308室', 'C', '3', '支持多种布局，适配培训、讨论与评审。', 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=800&h=600&fit=crop', 1, 95),
+(6, '培训室', 30, 'C栋4楼401室', 'C', '4', '适合部门培训和工作坊活动。', 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&h=600&fit=crop', 1, 85)
+ON DUPLICATE KEY UPDATE
+`name` = VALUES(`name`),
+`capacity` = VALUES(`capacity`),
+`location` = VALUES(`location`),
+`building` = VALUES(`building`),
+`floor` = VALUES(`floor`),
+`description` = VALUES(`description`),
+`cover_image` = VALUES(`cover_image`),
+`status` = VALUES(`status`),
+`sort_order` = VALUES(`sort_order`);
+
+-- 插入会议室图片
+INSERT INTO `room_image` (`id`, `room_id`, `image_url`, `sort_order`) VALUES
+(1, 1, 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop', 1),
+(2, 1, 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=1200&h=800&fit=crop', 2),
+(3, 2, 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1200&h=800&fit=crop', 1),
+(4, 3, 'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=1200&h=800&fit=crop', 1),
+(5, 4, 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=1200&h=800&fit=crop', 1),
+(6, 5, 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=1200&h=800&fit=crop', 1),
+(7, 6, 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=1200&h=800&fit=crop', 1)
+ON DUPLICATE KEY UPDATE
+`room_id` = VALUES(`room_id`),
+`image_url` = VALUES(`image_url`),
+`sort_order` = VALUES(`sort_order`);
+
+-- 插入会议室设备关联
+INSERT INTO `room_equipment` (`id`, `room_id`, `equipment_id`, `quantity`) VALUES
+(1, 1, 1, 1),
+(2, 1, 2, 1),
+(3, 2, 1, 1),
+(4, 2, 4, 1),
+(5, 2, 5, 1),
+(6, 3, 1, 1),
+(7, 3, 2, 2),
+(8, 3, 4, 1),
+(9, 3, 5, 1),
+(10, 4, 2, 1),
+(11, 5, 1, 1),
+(12, 5, 4, 1),
+(13, 5, 5, 1),
+(14, 6, 1, 1),
+(15, 6, 2, 1),
+(16, 6, 5, 1)
+ON DUPLICATE KEY UPDATE
+`room_id` = VALUES(`room_id`),
+`equipment_id` = VALUES(`equipment_id`),
+`quantity` = VALUES(`quantity`);
+
+-- 插入预约示例数据（用于演示待审核/已通过/已取消）
+INSERT INTO `reservation` (
+    `id`, `reservation_no`, `user_id`, `room_id`, `title`, `purpose`, `attendee_count`,
+    `reservation_date`, `start_time`, `end_time`, `status`,
+    `reject_reason`, `reviewer_id`, `reviewed_at`, `cancel_reason`, `cancelled_at`, `remark`
+) VALUES
+(1, 'R202602260001AA', 2, 1, '项目晨会', '项目周会讨论迭代进度', 6, CURDATE(), '09:00:00', '10:00:00', 1, NULL, 1, NOW(), NULL, NULL, '管理员已通过'),
+(2, 'R202602260002BB', 2, 1, '技术评审', '新版本技术方案评审', 8, CURDATE(), '14:00:00', '15:00:00', 0, NULL, NULL, NULL, NULL, NULL, '待管理员审核'),
+(3, 'R202602260003CC', 3, 2, '客户沟通会', '与客户确认需求细节', 10, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', '12:00:00', 1, NULL, 1, NOW(), NULL, NULL, '管理员已通过'),
+(4, 'R202602260004DD', 3, 3, '部门培训', '内部培训活动', 30, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '15:00:00', '17:00:00', 3, NULL, NULL, NULL, '用户临时有事取消', NOW(), '已取消')
+ON DUPLICATE KEY UPDATE
+`user_id` = VALUES(`user_id`),
+`room_id` = VALUES(`room_id`),
+`title` = VALUES(`title`),
+`purpose` = VALUES(`purpose`),
+`attendee_count` = VALUES(`attendee_count`),
+`reservation_date` = VALUES(`reservation_date`),
+`start_time` = VALUES(`start_time`),
+`end_time` = VALUES(`end_time`),
+`status` = VALUES(`status`),
+`reject_reason` = VALUES(`reject_reason`),
+`reviewer_id` = VALUES(`reviewer_id`),
+`reviewed_at` = VALUES(`reviewed_at`),
+`cancel_reason` = VALUES(`cancel_reason`),
+`cancelled_at` = VALUES(`cancelled_at`),
+`remark` = VALUES(`remark`);

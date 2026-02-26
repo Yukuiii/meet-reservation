@@ -19,7 +19,10 @@ export function request(options) {
       url: `${BASE_URL}${options.url}`,
       method: options.method || "GET",
       data: options.data || {},
-      header: options.header || {},
+      header: {
+        "content-type": "application/json",
+        ...(options.header || {}),
+      },
       success: (res) => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           reject(new Error("请求失败，请稍后重试"));

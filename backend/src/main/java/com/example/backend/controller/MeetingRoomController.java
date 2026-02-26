@@ -5,6 +5,7 @@ import com.example.backend.service.MeetingRoomService;
 import com.example.backend.vo.MeetingRoomListItemVO;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -40,6 +41,25 @@ public class MeetingRoomController {
             return ApiResponse.success(meetingRoomService.listRooms());
         } catch (Exception e) {
             return ApiResponse.fail("查询会议室列表失败");
+        }
+    }
+
+    /**
+     * 查询会议室详情。
+     *
+     * @param roomId 会议室ID
+     * @return 会议室详情
+     */
+    @GetMapping("/{roomId}")
+    public ApiResponse<MeetingRoomListItemVO> getRoomById(@PathVariable Long roomId) {
+        try {
+            MeetingRoomListItemVO room = meetingRoomService.getRoomById(roomId);
+            if (room == null) {
+                return ApiResponse.fail("会议室不存在或已停用");
+            }
+            return ApiResponse.success(room);
+        } catch (Exception e) {
+            return ApiResponse.fail("查询会议室详情失败");
         }
     }
 }

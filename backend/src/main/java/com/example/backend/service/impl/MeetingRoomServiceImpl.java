@@ -83,19 +83,52 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
 
         List<MeetingRoomListItemVO> result = new ArrayList<>(rooms.size());
         for (MeetingRoom room : rooms) {
-            MeetingRoomListItemVO item = new MeetingRoomListItemVO();
-            item.setId(room.getId());
-            item.setName(room.getName());
-            item.setCapacity(room.getCapacity());
-            item.setLocation(room.getLocation());
-            item.setLocationBuilding(extractBuilding(room));
-            item.setImage(pickRoomImage(room, firstImageMap.get(room.getId())));
-            item.setEquipment(roomEquipmentMap.getOrDefault(room.getId(), Collections.emptyList()));
-            item.setStatus(mapStatus(room.getStatus()));
-            item.setStatusText(mapStatusText(room.getStatus()));
-            result.add(item);
+            result.add(buildRoomItem(room, firstImageMap, roomEquipmentMap));
         }
         return result;
+    }
+
+    /**
+     * 根据ID查询会议室详情。
+     *
+     * @param roomId 会议室ID
+     * @return 会议室详情
+     */
+    @Override
+    public MeetingRoomListItemVO getRoomById(Long roomId) {
+        MeetingRoom room = meetingRoomMapper.selectById(roomId);
+        if (room == null || Integer.valueOf(0).equals(room.getStatus())) {
+            return null;
+        }
+
+        Map<Long, String> firstImageMap = buildFirstImageMap(Collections.singletonList(roomId));
+        Map<Long, List<String>> roomEquipmentMap = buildRoomEquipmentMap(Collections.singletonList(roomId));
+        return buildRoomItem(room, firstImageMap, roomEquipmentMap);
+    }
+
+    /**
+     * 构建会议室返回对象。
+     *
+     * @param room             会议室实体
+     * @param firstImageMap    图片映射
+     * @param roomEquipmentMap 设备映射
+     * @return 会议室返回对象
+     */
+    private MeetingRoomListItemVO buildRoomItem(MeetingRoom room,
+                                                Map<Long, String> firstImageMap,
+                                                Map<Long, List<String>> roomEquipmentMap) {
+        MeetingRoomListItemVO item = new MeetingRoomListItemVO();
+        item.setId(room.getId());
+        item.setName(room.getName());
+        item.setCapacity(room.getCapacity());
+        item.setLocation(room.getLocation());
+        item.setLocationBuilding(extractBuilding(room));
+        item.setImage(pickRoomImage(room, firstImageMap.get(room.getId())));
+        item.setDescription(room.getDescription());
+        item.setEquipment(roomEquipmentMap.getOrDefault(room.getId(), Collections.emptyList()));
+        item.setStatus(mapStatus(room.getStatus()));
+        item.setStatusText(mapStatusText(room.getStatus()));
+        return item;
     }
 
     /**

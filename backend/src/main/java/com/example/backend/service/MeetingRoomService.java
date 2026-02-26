@@ -15,4 +15,12 @@ public interface MeetingRoomService {
      * @return 会议室列表
      */
     List<MeetingRoomListItemVO> listRooms();
+
+    /**
+     * 根据ID查询会议室详情。
+     *
+     * @param roomId 会议室ID
+     * @return 会议室详情
+     */
+    MeetingRoomListItemVO getRoomById(Long roomId);
 }

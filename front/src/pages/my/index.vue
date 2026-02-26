@@ -62,6 +62,8 @@
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 个人中心页面
  * @description 展示用户信息、预约统计和功能菜单
@@ -90,8 +92,9 @@ export default {
   /**
    * 页面显示时同步登录态。
    */
-  onShow() {
+  async onShow() {
     this.loadUserInfo()
+    await this.loadReservationStats()
   },
 
   methods: {
@@ -110,6 +113,35 @@ export default {
         name: storageUserInfo.nickname || storageUserInfo.username || '未命名用户',
         department: storageUserInfo.role === 1 ? '系统管理员' : '普通用户',
         avatar: this.userInfo.avatar
+      }
+    },
+
+    /**
+     * 加载预约统计数据。
+     */
+    async loadReservationStats() {
+      const storageUserInfo = uni.getStorageSync('userInfo') || {}
+      const userId = Number(storageUserInfo.id)
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return
+      }
+
+      try {
+        const list = await request({
+          url: `/api/reservations/my?userId=${userId}`,
+          method: 'GET'
+        })
+        const reservationList = Array.isArray(list) ? list : []
+
+        // 根据状态键统计个人预约数据。
+        this.stats = {
+          total: reservationList.length,
+          pending: reservationList.filter(item => item.statusKey === 'pending').length,
+          approved: reservationList.filter(item => item.statusKey === 'approved').length,
+          cancelled: reservationList.filter(item => item.statusKey === 'cancelled').length
+        }
+      } catch (error) {
+        // 统计失败不阻塞页面主流程，这里仅静默处理。
       }
     },
 

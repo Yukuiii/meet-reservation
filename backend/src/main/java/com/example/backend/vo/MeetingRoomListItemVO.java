@@ -41,6 +41,11 @@ public class MeetingRoomListItemVO {
     private String image;
 
     /**
+     * 会议室简介。
+     */
+    private String description;
+
+    /**
      * 设备名称列表。
      */
     private List<String> equipment;
