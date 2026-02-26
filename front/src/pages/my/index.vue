@@ -69,10 +69,10 @@
 export default {
   data() {
     return {
-      // 用户信息（模拟数据）
+      // 用户信息（默认数据）
       userInfo: {
-        name: '张三',
-        department: '技术研发部',
+        name: '未登录用户',
+        department: '普通用户',
         avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop'
       },
       // 预约统计
@@ -87,7 +87,32 @@ export default {
     }
   },
 
+  /**
+   * 页面显示时同步登录态。
+   */
+  onShow() {
+    this.loadUserInfo()
+  },
+
   methods: {
+    /**
+     * 加载本地缓存的用户信息。
+     */
+    loadUserInfo() {
+      const token = uni.getStorageSync('token')
+      if (!token) {
+        uni.reLaunch({ url: '/pages/login/index' })
+        return
+      }
+
+      const storageUserInfo = uni.getStorageSync('userInfo') || {}
+      this.userInfo = {
+        name: storageUserInfo.nickname || storageUserInfo.username || '未命名用户',
+        department: storageUserInfo.role === 1 ? '系统管理员' : '普通用户',
+        avatar: this.userInfo.avatar
+      }
+    },
+
     /**
      * 跳转到我的预约
      */

@@ -29,7 +29,9 @@
       </view>
 
       <!-- 登录按钮 -->
-      <button class="login-btn" @click="handleLogin">登录</button>
+      <button class="login-btn" :disabled="loading" @click="handleLogin">
+        {{ loading ? '登录中...' : '登录' }}
+      </button>
 
       <!-- 注册链接 -->
       <view class="register-link">
@@ -41,6 +43,8 @@
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 登录页面
  * @description 用户登录功能，包含用户名密码输入和登录验证
@@ -52,7 +56,19 @@ export default {
       formData: {
         username: '',
         password: ''
-      }
+      },
+      // 提交状态
+      loading: false
+    }
+  },
+
+  /**
+   * 页面加载时回填用户名。
+   * @param {Object} options 页面参数
+   */
+  onLoad(options) {
+    if (options && options.username) {
+      this.formData.username = decodeURIComponent(options.username)
     }
   },
 
@@ -61,21 +77,47 @@ export default {
      * 处理登录逻辑
      * @description 验证表单并提交登录请求
      */
-    handleLogin() {
+    async handleLogin() {
       const { username, password } = this.formData
+      const finalUsername = username.trim()
+      const finalPassword = password.trim()
 
       // 表单验证
-      if (!username.trim()) {
+      if (!finalUsername) {
         uni.showToast({ title: '请输入用户名', icon: 'none' })
         return
       }
-      if (!password.trim()) {
+      if (!finalPassword) {
         uni.showToast({ title: '请输入密码', icon: 'none' })
         return
       }
+      if (this.loading) {
+        return
+      }
 
-      // TODO: 调用登录接口
-      uni.showToast({ title: '登录成功', icon: 'success' })
+      this.loading = true
+      try {
+        const data = await request({
+          url: '/api/auth/login',
+          method: 'POST',
+          data: {
+            username: finalUsername,
+            password: finalPassword
+          }
+        })
+
+        uni.setStorageSync('token', data.token)
+        uni.setStorageSync('userInfo', data.userInfo || {})
+
+        uni.showToast({ title: '登录成功', icon: 'success' })
+        setTimeout(() => {
+          uni.reLaunch({ url: '/pages/index/index' })
+        }, 800)
+      } catch (error) {
+        uni.showToast({ title: error.message || '登录失败', icon: 'none' })
+      } finally {
+        this.loading = false
+      }
     },
 
     /**
@@ -152,6 +194,10 @@ export default {
 
 .login-btn::after {
   border: none;
+}
+
+.login-btn[disabled] {
+  opacity: 0.7;
 }
 
 .register-link {

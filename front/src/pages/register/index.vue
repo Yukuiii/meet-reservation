@@ -52,7 +52,9 @@
       </view>
 
       <!-- 注册按钮 -->
-      <button class="register-btn" @click="handleRegister">注册</button>
+      <button class="register-btn" :disabled="loading" @click="handleRegister">
+        {{ loading ? '注册中...' : '注册' }}
+      </button>
 
       <!-- 登录链接 -->
       <view class="login-link">
@@ -64,6 +66,8 @@
 </template>
 
 <script>
+import { request } from '../../utils/request'
+
 /**
  * 注册页面
  * @description 用户注册功能，包含用户名、手机号、密码输入和注册验证
@@ -77,7 +81,9 @@ export default {
         phone: '',
         password: '',
         confirmPassword: ''
-      }
+      },
+      // 提交状态
+      loading: false
     }
   },
 
@@ -86,42 +92,66 @@ export default {
      * 处理注册逻辑
      * @description 验证表单并提交注册请求
      */
-    handleRegister() {
+    async handleRegister() {
       const { username, phone, password, confirmPassword } = this.formData
+      const finalUsername = username.trim()
+      const finalPhone = phone.trim()
+      const finalPassword = password.trim()
+      const finalConfirmPassword = confirmPassword.trim()
 
       // 表单验证
-      if (!username.trim()) {
+      if (!finalUsername) {
         uni.showToast({ title: '请输入用户名', icon: 'none' })
         return
       }
-      if (!phone.trim()) {
+      if (!finalPhone) {
         uni.showToast({ title: '请输入手机号', icon: 'none' })
         return
       }
       // 手机号格式验证
-      if (!/^1[3-9]\d{9}$/.test(phone)) {
+      if (!/^1[3-9]\d{9}$/.test(finalPhone)) {
         uni.showToast({ title: '手机号格式不正确', icon: 'none' })
         return
       }
-      if (!password.trim()) {
+      if (!finalPassword) {
         uni.showToast({ title: '请输入密码', icon: 'none' })
         return
       }
-      if (password.length < 6) {
+      if (finalPassword.length < 6) {
         uni.showToast({ title: '密码至少6位', icon: 'none' })
         return
       }
-      if (password !== confirmPassword) {
+      if (finalPassword !== finalConfirmPassword) {
         uni.showToast({ title: '两次密码不一致', icon: 'none' })
         return
       }
+      if (this.loading) {
+        return
+      }
 
-      // TODO: 调用注册接口
-      uni.showToast({ title: '注册成功', icon: 'success' })
-      // 注册成功后跳转到登录页
-      setTimeout(() => {
-        uni.navigateTo({ url: '/pages/login/index' })
-      }, 1500)
+      this.loading = true
+      try {
+        await request({
+          url: '/api/auth/register',
+          method: 'POST',
+          data: {
+            username: finalUsername,
+            phone: finalPhone,
+            password: finalPassword
+          }
+        })
+
+        uni.showToast({ title: '注册成功', icon: 'success' })
+        // 注册成功后跳转到登录页，并回填用户名。
+        setTimeout(() => {
+          const encodedUsername = encodeURIComponent(finalUsername)
+          uni.navigateTo({ url: `/pages/login/index?username=${encodedUsername}` })
+        }, 800)
+      } catch (error) {
+        uni.showToast({ title: error.message || '注册失败', icon: 'none' })
+      } finally {
+        this.loading = false
+      }
     },
 
     /**
@@ -198,6 +228,10 @@ export default {
 
 .register-btn::after {
   border: none;
+}
+
+.register-btn[disabled] {
+  opacity: 0.7;
 }
 
 .login-link {
