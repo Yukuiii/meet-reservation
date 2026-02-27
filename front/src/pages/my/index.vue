@@ -36,6 +36,11 @@
         <text class="menu-text">我的预约</text>
         <text class="menu-arrow">›</text>
       </view>
+      <view class="menu-item" @click="goToCalendar">
+        <text class="menu-icon">🗓️</text>
+        <text class="menu-text">日历视图</text>
+        <text class="menu-arrow">›</text>
+      </view>
       <view class="menu-item" @click="goToNotification">
         <text class="menu-icon">🔔</text>
         <text class="menu-text">消息通知</text>
@@ -150,6 +155,13 @@ export default {
      */
     goToBookingList() {
       uni.switchTab({ url: '/pages/booking/index' })
+    },
+
+    /**
+     * 跳转到日历视图。
+     */
+    goToCalendar() {
+      uni.navigateTo({ url: '/pages/calendar/index' })
     },
 
     /**

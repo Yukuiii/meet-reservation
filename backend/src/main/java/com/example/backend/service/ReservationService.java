@@ -1,6 +1,7 @@
 package com.example.backend.service;
 
 import com.example.backend.dto.CreateReservationRequest;
+import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.CreateReservationResponseVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
@@ -21,6 +22,16 @@ public interface ReservationService {
      * @return 占用时段列表
      */
     List<ReservationScheduleItemVO> listRoomSchedule(Long roomId, LocalDate reservationDate);
+
+    /**
+     * 查询日历视图预约数据。
+     *
+     * @param userId      用户ID
+     * @param viewType    视图类型：day/week
+     * @param targetDate  目标日期
+     * @return 日历数据
+     */
+    ReservationCalendarVO getCalendar(Long userId, String viewType, LocalDate targetDate);
 
     /**
      * 创建预约。

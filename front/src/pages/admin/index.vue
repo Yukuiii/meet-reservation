@@ -3,6 +3,7 @@
     <view class="header">
       <text class="title">管理员中心</text>
       <view class="header-actions">
+        <text class="header-action" @click="goToCalendar">日历</text>
         <text class="header-action" @click="refreshCurrentTab">刷新</text>
         <text class="header-action danger" @click="handleLogout">退出</text>
       </view>
@@ -582,6 +583,13 @@ export default {
   },
 
   methods: {
+    /**
+     * 跳转到日历视图。
+     */
+    goToCalendar() {
+      uni.navigateTo({ url: '/pages/calendar/index' })
+    },
+
     /**
      * 校验管理员登录态。
      * @returns {Boolean}

@@ -41,6 +41,12 @@
 			"style": {
 				"navigationBarTitleText": "管理员中心"
 			}
+		},
+		{
+			"path": "pages/calendar/index",
+			"style": {
+				"navigationBarTitleText": "预约日历"
+			}
 		}
 	],
 	"globalStyle": {

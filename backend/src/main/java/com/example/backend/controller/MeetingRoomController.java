@@ -1,15 +1,16 @@
 package com.example.backend.controller;
 
-import com.example.backend.common.ApiResponse;
-import com.example.backend.service.MeetingRoomService;
-import com.example.backend.vo.MeetingRoomListItemVO;
+import java.util.List;
+
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import com.example.backend.common.ApiResponse;
+import com.example.backend.service.MeetingRoomService;
+import com.example.backend.vo.MeetingRoomListItemVO;
 
 /**
  * 会议室信息控制器。
@@ -40,7 +41,7 @@ public class MeetingRoomController {
         try {
             return ApiResponse.success(meetingRoomService.listRooms());
         } catch (Exception e) {
-            return ApiResponse.fail("查询会议室列表失败");
+            return ApiResponse.fail("查询会议室列表失败:"+e.getMessage());
         }
     }
 

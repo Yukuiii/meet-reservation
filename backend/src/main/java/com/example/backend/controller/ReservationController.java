@@ -5,6 +5,7 @@ import com.example.backend.dto.CancelReservationRequest;
 import com.example.backend.dto.CreateReservationRequest;
 import com.example.backend.service.ReservationService;
 import com.example.backend.vo.CreateReservationResponseVO;
+import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -58,6 +60,30 @@ public class ReservationController {
             return ApiResponse.fail(e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail("查询占用状态失败");
+        }
+    }
+
+    /**
+     * 查询预约日历视图数据（按日/周）。
+     *
+     * @param userId   用户ID
+     * @param viewType 视图类型：day/week
+     * @param date     目标日期，格式：yyyy-MM-dd
+     * @return 日历数据
+     */
+    @GetMapping("/calendar")
+    public ApiResponse<ReservationCalendarVO> getCalendar(@RequestParam Long userId,
+                                                           @RequestParam(required = false) String viewType,
+                                                           @RequestParam(required = false) String date) {
+        try {
+            LocalDate targetDate = StringUtils.hasText(date) ? LocalDate.parse(date) : LocalDate.now();
+            return ApiResponse.success(reservationService.getCalendar(userId, viewType, targetDate));
+        } catch (DateTimeParseException e) {
+            return ApiResponse.fail("日期格式错误，请使用yyyy-MM-dd");
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("查询日历数据失败");
         }
     }
 

@@ -9,18 +9,24 @@ import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.ReservationService;
+import com.example.backend.vo.ReservationCalendarDayVO;
+import com.example.backend.vo.ReservationCalendarItemVO;
+import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.CreateReservationResponseVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,6 +63,16 @@ public class ReservationServiceImpl implements ReservationService {
      * 已完成状态。
      */
     private static final int STATUS_FINISHED = 4;
+
+    /**
+     * 日视图。
+     */
+    private static final String VIEW_DAY = "day";
+
+    /**
+     * 周视图。
+     */
+    private static final String VIEW_WEEK = "week";
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -103,6 +119,67 @@ public class ReservationServiceImpl implements ReservationService {
         );
 
         return reservationList.stream().map(this::toScheduleItem).toList();
+    }
+
+    /**
+     * 查询日历视图预约数据。
+     *
+     * @param userId     用户ID
+     * @param viewType   视图类型：day/week
+     * @param targetDate 目标日期
+     * @return 日历数据
+     */
+    @Override
+    public ReservationCalendarVO getCalendar(Long userId, String viewType, LocalDate targetDate) {
+        ensureUserCanReserve(userId);
+
+        String finalViewType = normalizeViewType(viewType);
+        LocalDate finalDate = targetDate == null ? LocalDate.now() : targetDate;
+        LocalDate startDate = finalViewType.equals(VIEW_WEEK) ? getWeekStart(finalDate) : finalDate;
+        LocalDate endDate = finalViewType.equals(VIEW_WEEK) ? startDate.plusDays(6) : finalDate;
+
+        List<Reservation> reservationList = reservationMapper.selectList(
+                new LambdaQueryWrapper<Reservation>()
+                        .between(Reservation::getReservationDate, startDate, endDate)
+                        .in(Reservation::getStatus, STATUS_PENDING, STATUS_APPROVED)
+                        .orderByAsc(Reservation::getReservationDate)
+                        .orderByAsc(Reservation::getStartTime)
+                        .orderByAsc(Reservation::getEndTime)
+                        .orderByAsc(Reservation::getId)
+        );
+
+        Map<Long, String> roomNameMap = buildRoomNameMap(reservationList);
+        Map<LocalDate, List<Reservation>> dayReservationMap = initDayReservationMap(startDate, endDate);
+        for (Reservation reservation : reservationList) {
+            dayReservationMap
+                    .computeIfAbsent(reservation.getReservationDate(), key -> new ArrayList<>())
+                    .add(reservation);
+        }
+
+        List<ReservationCalendarDayVO> dayList = new ArrayList<>(dayReservationMap.size());
+        int totalCount = 0;
+        for (Map.Entry<LocalDate, List<Reservation>> entry : dayReservationMap.entrySet()) {
+            LocalDate currentDate = entry.getKey();
+            List<ReservationCalendarItemVO> itemList = entry.getValue().stream()
+                    .map(item -> toCalendarItem(item, roomNameMap.get(item.getRoomId())))
+                    .toList();
+
+            ReservationCalendarDayVO dayVO = new ReservationCalendarDayVO();
+            dayVO.setDate(formatDate(currentDate));
+            dayVO.setWeekDay(mapWeekDay(currentDate.getDayOfWeek()));
+            dayVO.setTotalCount(itemList.size());
+            dayVO.setItems(itemList);
+            dayList.add(dayVO);
+            totalCount += itemList.size();
+        }
+
+        ReservationCalendarVO result = new ReservationCalendarVO();
+        result.setViewType(finalViewType);
+        result.setStartDate(formatDate(startDate));
+        result.setEndDate(formatDate(endDate));
+        result.setTotalCount(totalCount);
+        result.setDays(dayList);
+        return result;
     }
 
     /**
@@ -362,6 +439,90 @@ public class ReservationServiceImpl implements ReservationService {
         if (conflictCount != null && conflictCount > 0) {
             throw new IllegalArgumentException("所选时间段已被占用，请更换时段");
         }
+    }
+
+    /**
+     * 标准化日历视图类型。
+     *
+     * @param viewType 原始视图类型
+     * @return day 或 week
+     */
+    private String normalizeViewType(String viewType) {
+        if (!StringUtils.hasText(viewType)) {
+            return VIEW_DAY;
+        }
+        String finalViewType = viewType.trim().toLowerCase();
+        if (VIEW_DAY.equals(finalViewType) || VIEW_WEEK.equals(finalViewType)) {
+            return finalViewType;
+        }
+        throw new IllegalArgumentException("日历视图类型不合法，仅支持day/week");
+    }
+
+    /**
+     * 计算目标日期所在周（周一）起始日。
+     *
+     * @param date 目标日期
+     * @return 周起始日
+     */
+    private LocalDate getWeekStart(LocalDate date) {
+        return date.minusDays(date.getDayOfWeek().getValue() - DayOfWeek.MONDAY.getValue());
+    }
+
+    /**
+     * 初始化日期到预约列表映射，保证空日期也会返回。
+     *
+     * @param startDate 起始日期
+     * @param endDate   结束日期
+     * @return 日期映射
+     */
+    private Map<LocalDate, List<Reservation>> initDayReservationMap(LocalDate startDate, LocalDate endDate) {
+        Map<LocalDate, List<Reservation>> dayReservationMap = new LinkedHashMap<>();
+        for (LocalDate currentDate = startDate; !currentDate.isAfter(endDate); currentDate = currentDate.plusDays(1)) {
+            dayReservationMap.put(currentDate, new ArrayList<>());
+        }
+        return dayReservationMap;
+    }
+
+    /**
+     * 预约实体转日历预约项。
+     *
+     * @param reservation 预约实体
+     * @param roomName    会议室名称
+     * @return 日历预约项
+     */
+    private ReservationCalendarItemVO toCalendarItem(Reservation reservation, String roomName) {
+        ReservationCalendarItemVO item = new ReservationCalendarItemVO();
+        item.setId(reservation.getId());
+        item.setReservationNo(reservation.getReservationNo());
+        item.setRoomId(reservation.getRoomId());
+        item.setRoomName(StringUtils.hasText(roomName) ? roomName : "未知会议室");
+        item.setDate(formatDate(reservation.getReservationDate()));
+        item.setStartTime(formatTime(reservation.getStartTime()));
+        item.setEndTime(formatTime(reservation.getEndTime()));
+        item.setTimeSlot(item.getStartTime() + "-" + item.getEndTime());
+        item.setTitle(reservation.getTitle());
+        item.setStatus(reservation.getStatus());
+        item.setStatusKey(mapStatusKey(reservation.getStatus()));
+        item.setStatusText(mapStatusText(reservation.getStatus()));
+        return item;
+    }
+
+    /**
+     * 星期枚举转换为文案。
+     *
+     * @param dayOfWeek 星期枚举
+     * @return 星期文案
+     */
+    private String mapWeekDay(DayOfWeek dayOfWeek) {
+        return switch (dayOfWeek) {
+            case MONDAY -> "周一";
+            case TUESDAY -> "周二";
+            case WEDNESDAY -> "周三";
+            case THURSDAY -> "周四";
+            case FRIDAY -> "周五";
+            case SATURDAY -> "周六";
+            case SUNDAY -> "周日";
+        };
     }
 
     /**
