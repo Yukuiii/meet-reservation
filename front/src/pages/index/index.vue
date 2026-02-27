@@ -177,6 +177,13 @@ export default {
     this.loadRoomList()
   },
 
+  /**
+   * 页面显示时刷新会议室列表。
+   */
+  onShow() {
+    this.loadRoomList()
+  },
+
   computed: {
     /**
      * 根据筛选条件过滤会议室列表
@@ -432,9 +439,12 @@ export default {
 .room-list {
   flex: 1;
   padding: 20rpx;
+  box-sizing: border-box;
 }
 
 .room-card {
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   background-color: #fff;
   border-radius: 16rpx;
@@ -463,12 +473,19 @@ export default {
 }
 
 .room-name {
+  flex: 1;
+  min-width: 0;
+  margin-right: 12rpx;
   font-size: 32rpx;
   font-weight: bold;
   color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .room-status {
+  flex-shrink: 0;
   font-size: 24rpx;
   padding: 4rpx 16rpx;
   border-radius: 20rpx;

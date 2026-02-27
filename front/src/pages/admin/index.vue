@@ -122,7 +122,6 @@
             <view class="card-line">位置：{{ room.location || '-' }}</view>
             <view class="card-line">楼栋/楼层：{{ room.building || '-' }} / {{ room.floor || '-' }}</view>
             <view class="card-line">排序：{{ room.sortOrder || 0 }}</view>
-            <view class="card-line">封面路径：{{ room.coverImage || '-' }}</view>
             <image
               class="room-cover-preview"
               v-if="room.coverImage"
