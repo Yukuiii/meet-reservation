@@ -38,11 +38,7 @@ public class MeetingRoomController {
      */
     @GetMapping
     public ApiResponse<List<MeetingRoomListItemVO>> listRooms() {
-        try {
-            return ApiResponse.success(meetingRoomService.listRooms());
-        } catch (Exception e) {
-            return ApiResponse.fail("查询会议室列表失败:"+e.getMessage());
-        }
+        return ApiResponse.success(meetingRoomService.listRooms());
     }
 
     /**
@@ -53,14 +49,10 @@ public class MeetingRoomController {
      */
     @GetMapping("/{roomId}")
     public ApiResponse<MeetingRoomListItemVO> getRoomById(@PathVariable Long roomId) {
-        try {
-            MeetingRoomListItemVO room = meetingRoomService.getRoomById(roomId);
-            if (room == null) {
-                return ApiResponse.fail("会议室不存在或已停用");
-            }
-            return ApiResponse.success(room);
-        } catch (Exception e) {
-            return ApiResponse.fail("查询会议室详情失败");
+        MeetingRoomListItemVO room = meetingRoomService.getRoomById(roomId);
+        if (room == null) {
+            return ApiResponse.fail("会议室不存在或已停用");
         }
+        return ApiResponse.success(room);
     }
 }
