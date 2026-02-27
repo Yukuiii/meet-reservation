@@ -75,6 +75,20 @@
         <text>暂无预约记录</text>
       </view>
     </scroll-view>
+
+    <!-- 预约详情弹窗 -->
+    <view class="detail-modal-mask" v-if="detailModalVisible" @click="closeDetailModal">
+      <view class="detail-modal" @click.stop>
+        <view class="detail-modal-title">预约详情</view>
+        <scroll-view class="detail-modal-body" scroll-y>
+          <view class="detail-row" v-for="(item, index) in detailItems" :key="`${item.label}-${index}`">
+            <text class="detail-label">{{ item.label }}：</text>
+            <text class="detail-value">{{ item.value }}</text>
+          </view>
+        </scroll-view>
+        <view class="detail-modal-footer" @click="closeDetailModal">确定</view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -93,7 +107,11 @@ export default {
       // 预约列表
       bookingList: [],
       // 加载状态
-      loading: false
+      loading: false,
+      // 预约详情弹窗可见状态
+      detailModalVisible: false,
+      // 预约详情项（按行渲染）
+      detailItems: []
     }
   },
 
@@ -179,33 +197,48 @@ export default {
           method: 'GET'
         })
 
-        const lines = [
-          `预约编号：${detail.reservationNo || '-'}`,
-          `会议室：${detail.roomName || '-'}`,
-          `日期：${detail.date || '-'}`,
-          `时段：${detail.timeSlot || '-'}`,
-          `参与人数：${detail.attendees || 0}人`,
-          `状态：${detail.statusText || '-'}`,
-          `事由：${detail.purpose || '-'}`
-        ]
-        if (detail.cancelReason) {
-          lines.push(`取消原因：${detail.cancelReason}`)
-        }
-        if (detail.rejectReason) {
-          lines.push(`拒绝原因：${detail.rejectReason}`)
-        }
-        if (detail.remark) {
-          lines.push(`备注：${detail.remark}`)
-        }
-
-        uni.showModal({
-          title: '预约详情',
-          content: lines.join('\n'),
-          showCancel: false
-        })
+        this.detailItems = this.buildDetailItems(detail)
+        this.detailModalVisible = true
       } catch (error) {
         uni.showToast({ title: error.message || '详情加载失败', icon: 'none' })
       }
+    },
+
+    /**
+     * 构建预约详情展示项。
+     * @param {Object} detail 预约详情
+     * @returns {Array<{label: String, value: String}>}
+     */
+    buildDetailItems(detail) {
+      const detailItems = [
+        { label: '预约编号', value: detail.reservationNo || '-' },
+        { label: '会议室', value: detail.roomName || '-' },
+        { label: '日期', value: detail.date || '-' },
+        { label: '时段', value: detail.timeSlot || '-' },
+        { label: '参与人数', value: `${detail.attendees || 0}人` },
+        { label: '状态', value: detail.statusText || '-' },
+        { label: '事由', value: detail.purpose || '-' }
+      ]
+
+      // 仅在字段有值时展示可选信息，避免空行。
+      if (detail.cancelReason) {
+        detailItems.push({ label: '取消原因', value: detail.cancelReason })
+      }
+      if (detail.rejectReason) {
+        detailItems.push({ label: '拒绝原因', value: detail.rejectReason })
+      }
+      if (detail.remark) {
+        detailItems.push({ label: '备注', value: detail.remark })
+      }
+      return detailItems
+    },
+
+    /**
+     * 关闭预约详情弹窗并清理数据。
+     */
+    closeDetailModal() {
+      this.detailModalVisible = false
+      this.detailItems = []
     },
 
     /**
@@ -391,5 +424,78 @@ export default {
   padding: 100rpx 0;
   color: #999;
   font-size: 28rpx;
+}
+
+/* 预约详情弹窗 */
+.detail-modal-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 48rpx;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.detail-modal {
+  width: 100%;
+  max-height: 70vh;
+  background-color: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+
+.detail-modal-title {
+  padding: 28rpx 32rpx 20rpx;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.detail-modal-body {
+  max-height: 560rpx;
+  padding: 0 32rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #f1f1f1;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  width: 170rpx;
+  flex-shrink: 0;
+  color: #666;
+  font-size: 28rpx;
+  line-height: 40rpx;
+}
+
+.detail-value {
+  flex: 1;
+  color: #333;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  word-break: break-all;
+}
+
+.detail-modal-footer {
+  border-top: 1rpx solid #eee;
+  text-align: center;
+  color: #007aff;
+  font-size: 30rpx;
+  line-height: 96rpx;
+  font-weight: 600;
 }
 </style>
