@@ -41,20 +41,9 @@
         <text class="menu-text">日历视图</text>
         <text class="menu-arrow">›</text>
       </view>
-      <view class="menu-item" @click="goToNotification">
-        <text class="menu-icon">🔔</text>
-        <text class="menu-text">消息通知</text>
-        <text class="menu-badge" v-if="unreadCount > 0">{{ unreadCount }}</text>
-        <text class="menu-arrow">›</text>
-      </view>
-      <view class="menu-item" @click="goToSettings">
-        <text class="menu-icon">⚙️</text>
-        <text class="menu-text">设置</text>
-        <text class="menu-arrow">›</text>
-      </view>
-      <view class="menu-item" @click="goToAbout">
-        <text class="menu-icon">ℹ️</text>
-        <text class="menu-text">关于我们</text>
+      <view class="menu-item" v-if="isAdmin" @click="goToAdmin">
+        <text class="menu-icon">🛠️</text>
+        <text class="menu-text">管理员后台</text>
         <text class="menu-arrow">›</text>
       </view>
     </view>
@@ -89,8 +78,8 @@ export default {
         approved: 10,
         cancelled: 3
       },
-      // 未读消息数
-      unreadCount: 3
+      // 是否管理员
+      isAdmin: false
     }
   },
 
@@ -114,11 +103,13 @@ export default {
       }
 
       const storageUserInfo = uni.getStorageSync('userInfo') || {}
+      const role = Number(storageUserInfo.role)
       this.userInfo = {
         name: storageUserInfo.nickname || storageUserInfo.username || '未命名用户',
-        department: storageUserInfo.role === 1 ? '系统管理员' : '普通用户',
+        department: role === 1 ? '系统管理员' : '普通用户',
         avatar: this.userInfo.avatar
       }
+      this.isAdmin = role === 1
     },
 
     /**
@@ -165,24 +156,10 @@ export default {
     },
 
     /**
-     * 跳转到消息通知
+     * 跳转到管理员后台。
      */
-    goToNotification() {
-      uni.showToast({ title: '消息通知', icon: 'none' })
-    },
-
-    /**
-     * 跳转到设置
-     */
-    goToSettings() {
-      uni.showToast({ title: '设置', icon: 'none' })
-    },
-
-    /**
-     * 跳转到关于我们
-     */
-    goToAbout() {
-      uni.showToast({ title: '关于我们', icon: 'none' })
+    goToAdmin() {
+      uni.navigateTo({ url: '/pages/admin/index' })
     },
 
     /**
@@ -305,19 +282,6 @@ export default {
   flex: 1;
   font-size: 30rpx;
   color: #333;
-}
-
-.menu-badge {
-  min-width: 36rpx;
-  height: 36rpx;
-  line-height: 36rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #fff;
-  background-color: #f44336;
-  border-radius: 18rpx;
-  padding: 0 10rpx;
-  margin-right: 10rpx;
 }
 
 .menu-arrow {
