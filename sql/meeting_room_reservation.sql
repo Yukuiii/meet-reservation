@@ -152,12 +152,12 @@ ON DUPLICATE KEY UPDATE
 
 -- 插入初始会议室
 INSERT INTO `meeting_room` (`id`, `name`, `capacity`, `location`, `building`, `floor`, `description`, `cover_image`, `status`, `sort_order`) VALUES
-(1, '第一会议室', 8, 'A栋3楼301室', 'A', '3', '适合小型团队例会，配备基础投影设备。', 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop', 1, 100),
-(2, '第二会议室', 15, 'A栋5楼502室', 'A', '5', '中型会议室，适合跨团队评审。', 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800&h=600&fit=crop', 1, 90),
-(3, '大型报告厅', 50, 'B栋1楼101室', 'B', '1', '大型宣讲与培训场地，支持远程会议。', 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=800&h=600&fit=crop', 1, 120),
-(4, '小型洽谈室', 6, 'B栋2楼205室', 'B', '2', '适合商务洽谈及一对一会议。', 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=800&h=600&fit=crop', 1, 80),
-(5, '多功能会议室', 25, 'C栋3楼308室', 'C', '3', '支持多种布局，适配培训、讨论与评审。', 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=800&h=600&fit=crop', 1, 95),
-(6, '培训室', 30, 'C栋4楼401室', 'C', '4', '适合部门培训和工作坊活动。', 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&h=600&fit=crop', 1, 85)
+(1, '第一会议室', 8, 'A栋3楼301室', 'A', '3', '适合小型团队例会，配备基础投影设备。', '/images/rooms/room-1.jpg', 1, 100),
+(2, '第二会议室', 15, 'A栋5楼502室', 'A', '5', '中型会议室，适合跨团队评审。', '/images/rooms/room-2.jpg', 1, 90),
+(3, '大型报告厅', 50, 'B栋1楼101室', 'B', '1', '大型宣讲与培训场地，支持远程会议。', '/images/rooms/room-3.jpg', 1, 120),
+(4, '小型洽谈室', 6, 'B栋2楼205室', 'B', '2', '适合商务洽谈及一对一会议。', '/images/rooms/room-4.jpg', 1, 80),
+(5, '多功能会议室', 25, 'C栋3楼308室', 'C', '3', '支持多种布局，适配培训、讨论与评审。', '/images/rooms/room-5.jpg', 1, 95),
+(6, '培训室', 30, 'C栋4楼401室', 'C', '4', '适合部门培训和工作坊活动。', '/images/rooms/room-6.jpg', 1, 85)
 ON DUPLICATE KEY UPDATE
 `name` = VALUES(`name`),
 `capacity` = VALUES(`capacity`),

@@ -33,8 +33,7 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
     /**
      * 默认图片，用于兜底无图会议室。
      */
-    private static final String DEFAULT_ROOM_IMAGE =
-            "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&h=400&fit=crop";
+    private static final String DEFAULT_ROOM_IMAGE = "/images/meeting-room-default.jpg";
 
     private final MeetingRoomMapper meetingRoomMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;

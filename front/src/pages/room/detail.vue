@@ -104,7 +104,9 @@
 </template>
 
 <script>
-import { request } from '../../utils/request'
+import { buildAssetUrl, request } from '../../utils/request'
+
+const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
 
 /**
  * 会议室详情页
@@ -121,7 +123,7 @@ export default {
         name: '',
         capacity: 0,
         location: '',
-        image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&h=600&fit=crop',
+        image: buildAssetUrl(DEFAULT_ROOM_IMAGE),
         equipment: [],
         status: 'available',
         statusText: '可预约',
@@ -233,7 +235,7 @@ export default {
           name: room.name || '',
           capacity: room.capacity || 0,
           location: room.location || '',
-          image: room.image || this.roomInfo.image,
+          image: buildAssetUrl(room.image || DEFAULT_ROOM_IMAGE),
           equipment: Array.isArray(room.equipment) ? room.equipment : [],
           status: room.status || 'available',
           statusText: room.statusText || '可预约',

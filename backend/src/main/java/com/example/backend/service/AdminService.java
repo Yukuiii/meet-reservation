@@ -10,6 +10,7 @@ import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -41,6 +42,15 @@ public interface AdminService {
      * @return 会议室列表
      */
     List<AdminMeetingRoomVO> listMeetingRooms(Long adminUserId);
+
+    /**
+     * 上传会议室封面图。
+     *
+     * @param adminUserId 管理员用户ID
+     * @param file        图片文件
+     * @return 可访问图片URL
+     */
+    String uploadMeetingRoomCover(Long adminUserId, MultipartFile file);
 
     /**
      * 新增会议室。

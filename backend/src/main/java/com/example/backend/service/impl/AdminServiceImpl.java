@@ -23,11 +23,18 @@ import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -37,6 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -106,8 +114,30 @@ public class AdminServiceImpl implements AdminService {
      */
     private static final String DEFAULT_EMERGENCY_CANCEL_REASON = "因管理员紧急占用，原预约已协调取消";
 
+    /**
+     * 会议室封面图存储子目录。
+     */
+    private static final String ROOM_COVER_UPLOAD_SUB_DIR = "meeting-room";
+
+    /**
+     * 会议室封面图大小上限（10MB）。
+     */
+    private static final long MAX_ROOM_COVER_SIZE = 10L * 1024L * 1024L;
+
+    /**
+     * 允许上传的图片扩展名集合。
+     */
+    private static final Set<String> ALLOWED_IMAGE_EXTENSIONS =
+            Set.of("jpg", "jpeg", "png", "webp", "gif");
+
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+
+    /**
+     * 本地上传根目录。
+     */
+    @Value("${app.upload.base-dir:${user.dir}/uploads}")
+    private String uploadBaseDir;
 
     private final UserMapper userMapper;
     private final ReservationMapper reservationMapper;
@@ -251,6 +281,39 @@ public class AdminServiceImpl implements AdminService {
             result.add(roomVO);
         }
         return result;
+    }
+
+    /**
+     * 上传会议室封面图。
+     *
+     * @param adminUserId 管理员用户ID
+     * @param file        图片文件
+     * @return 可访问图片URL
+     */
+    @Override
+    public String uploadMeetingRoomCover(Long adminUserId, MultipartFile file) {
+        ensureAdminUser(adminUserId);
+        validateRoomCoverFile(file);
+
+        String extension = resolveImageExtension(file);
+        String fileName = UUID.randomUUID().toString().replace("-", "") + "." + extension;
+
+        Path uploadDir = Paths.get(uploadBaseDir, ROOM_COVER_UPLOAD_SUB_DIR).toAbsolutePath().normalize();
+        Path targetPath = uploadDir.resolve(fileName).normalize();
+
+        // 防止文件名构造导致越界写入到上传目录之外。
+        if (!targetPath.startsWith(uploadDir)) {
+            throw new IllegalArgumentException("封面图路径不合法");
+        }
+
+        try {
+            Files.createDirectories(uploadDir);
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new IllegalStateException("上传封面图失败，请稍后重试", e);
+        }
+
+        return "/uploads/" + ROOM_COVER_UPLOAD_SUB_DIR + "/" + fileName;
     }
 
     /**
@@ -1177,5 +1240,86 @@ public class AdminServiceImpl implements AdminService {
         String timePart = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").format(LocalDateTime.now());
         String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
         return "E" + timePart + randomPart;
+    }
+
+    /**
+     * 校验会议室封面图文件。
+     *
+     * @param file 图片文件
+     */
+    private void validateRoomCoverFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("封面图文件不能为空");
+        }
+        if (file.getSize() > MAX_ROOM_COVER_SIZE) {
+            throw new IllegalArgumentException("封面图大小不能超过10MB");
+        }
+
+        String contentType = cleanText(file.getContentType()).toLowerCase(Locale.ROOT);
+        if (StringUtils.hasText(contentType) && !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("仅支持上传图片文件");
+        }
+
+        String extension = extractFileExtension(file.getOriginalFilename());
+        if (StringUtils.hasText(extension)) {
+            if (!ALLOWED_IMAGE_EXTENSIONS.contains(extension)) {
+                throw new IllegalArgumentException("仅支持 jpg/jpeg/png/webp/gif 格式图片");
+            }
+            return;
+        }
+
+        String inferredExtension = inferExtensionByContentType(contentType);
+        if (!StringUtils.hasText(inferredExtension)) {
+            throw new IllegalArgumentException("仅支持 jpg/jpeg/png/webp/gif 格式图片");
+        }
+    }
+
+    /**
+     * 解析图片扩展名。
+     *
+     * @param file 图片文件
+     * @return 扩展名
+     */
+    private String resolveImageExtension(MultipartFile file) {
+        String extension = extractFileExtension(file.getOriginalFilename());
+        if (StringUtils.hasText(extension) && ALLOWED_IMAGE_EXTENSIONS.contains(extension)) {
+            return extension;
+        }
+        return inferExtensionByContentType(file.getContentType());
+    }
+
+    /**
+     * 根据 MIME 类型推断图片扩展名。
+     *
+     * @param contentType MIME 类型
+     * @return 扩展名，无法推断时返回空字符串
+     */
+    private String inferExtensionByContentType(String contentType) {
+        String finalContentType = cleanText(contentType).toLowerCase(Locale.ROOT);
+        return switch (finalContentType) {
+            case "image/jpeg", "image/jpg" -> "jpg";
+            case "image/png" -> "png";
+            case "image/webp" -> "webp";
+            case "image/gif" -> "gif";
+            default -> "";
+        };
+    }
+
+    /**
+     * 提取文件扩展名。
+     *
+     * @param fileName 文件名
+     * @return 扩展名（小写），无扩展名时返回空字符串
+     */
+    private String extractFileExtension(String fileName) {
+        String finalFileName = cleanText(fileName);
+        if (!StringUtils.hasText(finalFileName)) {
+            return "";
+        }
+        int index = finalFileName.lastIndexOf('.');
+        if (index < 0 || index == finalFileName.length() - 1) {
+            return "";
+        }
+        return finalFileName.substring(index + 1).toLowerCase(Locale.ROOT);
     }
 }

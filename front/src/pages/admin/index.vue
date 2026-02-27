@@ -122,7 +122,13 @@
             <view class="card-line">位置：{{ room.location || '-' }}</view>
             <view class="card-line">楼栋/楼层：{{ room.building || '-' }} / {{ room.floor || '-' }}</view>
             <view class="card-line">排序：{{ room.sortOrder || 0 }}</view>
-            <view class="card-line">封面：{{ room.coverImage || '-' }}</view>
+            <view class="card-line">封面路径：{{ room.coverImage || '-' }}</view>
+            <image
+              class="room-cover-preview"
+              v-if="room.coverImage"
+              :src="displayCoverImage(room.coverImage)"
+              mode="aspectFill"
+            />
             <view class="card-line">描述：{{ room.description || '-' }}</view>
             <view class="equipment-row">
               <text
@@ -396,13 +402,36 @@
           </view>
 
           <view class="form-item column">
-            <text class="label">封面图URL</text>
+            <text class="label">封面图</text>
+            <view class="upload-action-row">
+              <button
+                class="upload-btn primary"
+                :disabled="roomCoverUploading"
+                @click="chooseRoomCoverImage"
+              >
+                {{ roomCoverUploading ? '上传中...' : '上传本地图片' }}
+              </button>
+              <button
+                class="upload-btn"
+                :disabled="roomCoverUploading || !roomForm.coverImage"
+                @click="clearRoomCoverImage"
+              >
+                清空封面
+              </button>
+            </view>
             <input
               class="input"
               type="text"
-              v-model="roomForm.coverImage"
-              placeholder="请输入图片URL"
+              :value="roomForm.coverImage"
+              placeholder="请先上传封面图"
               placeholder-class="placeholder"
+              disabled
+            />
+            <image
+              class="room-cover-preview form"
+              v-if="roomForm.coverImage"
+              :src="displayCoverImage(roomForm.coverImage)"
+              mode="aspectFill"
             />
           </view>
 
@@ -526,7 +555,9 @@
 </template>
 
 <script>
-import { request } from '../../utils/request'
+import { buildAssetUrl, request, uploadFile } from '../../utils/request'
+
+const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
 
 const ROOM_STATUS_OPTIONS = [
   { value: 1, label: '正常' },
@@ -631,6 +662,7 @@ export default {
       equipmentOptions: [],
       showRoomModal: false,
       roomSaving: false,
+      roomCoverUploading: false,
       roomForm: createDefaultRoomForm(),
       // 设备模块
       equipmentLoading: false,
@@ -955,6 +987,7 @@ export default {
      */
     openCreateRoom() {
       this.roomForm = createDefaultRoomForm()
+      this.roomCoverUploading = false
       this.showRoomModal = true
     },
 
@@ -976,6 +1009,7 @@ export default {
         sortOrder: room.sortOrder || 0,
         equipmentIds: Array.isArray(room.equipmentIds) ? [...room.equipmentIds] : []
       }
+      this.roomCoverUploading = false
       this.showRoomModal = true
     },
 
@@ -983,10 +1017,76 @@ export default {
      * 关闭会议室弹窗。
      */
     closeRoomModal() {
-      if (this.roomSaving) {
+      if (this.roomSaving || this.roomCoverUploading) {
         return
       }
       this.showRoomModal = false
+    },
+
+    /**
+     * 会议室封面地址转换为可访问URL。
+     * @param {String} coverImage 原始封面地址
+     * @returns {String}
+     */
+    displayCoverImage(coverImage) {
+      return buildAssetUrl(coverImage || DEFAULT_ROOM_IMAGE)
+    },
+
+    /**
+     * 选择并上传会议室封面图。
+     */
+    chooseRoomCoverImage() {
+      if (this.roomCoverUploading) {
+        return
+      }
+
+      uni.chooseImage({
+        count: 1,
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: async (res) => {
+          const filePath = Array.isArray(res.tempFilePaths) ? res.tempFilePaths[0] : ''
+          if (!filePath) {
+            uni.showToast({ title: '未选择有效图片', icon: 'none' })
+            return
+          }
+
+          this.roomCoverUploading = true
+          try {
+            const uploadedUrl = await uploadFile({
+              url: '/api/admin/meeting-rooms/cover',
+              filePath,
+              name: 'file',
+              formData: {
+                adminUserId: `${this.adminUserId}`
+              }
+            })
+            this.roomForm.coverImage = uploadedUrl || ''
+            uni.showToast({ title: '上传成功', icon: 'success' })
+          } catch (error) {
+            uni.showToast({ title: error.message || '上传封面失败', icon: 'none' })
+          } finally {
+            this.roomCoverUploading = false
+          }
+        },
+        fail: (err) => {
+          const errMsg = (err && err.errMsg) || ''
+          if (errMsg.includes('cancel')) {
+            return
+          }
+          uni.showToast({ title: '选择图片失败', icon: 'none' })
+        }
+      })
+    },
+
+    /**
+     * 清空会议室封面图。
+     */
+    clearRoomCoverImage() {
+      if (this.roomCoverUploading) {
+        return
+      }
+      this.roomForm.coverImage = ''
     },
 
     /**
@@ -1164,6 +1264,10 @@ export default {
         return
       }
       if (this.roomSaving) {
+        return
+      }
+      if (this.roomCoverUploading) {
+        uni.showToast({ title: '封面图上传中，请稍候', icon: 'none' })
         return
       }
 
@@ -1561,6 +1665,18 @@ export default {
   word-break: break-all;
 }
 
+.room-cover-preview {
+  width: 100%;
+  height: 220rpx;
+  border-radius: 10rpx;
+  margin-top: 12rpx;
+  background-color: #f3f4f6;
+}
+
+.room-cover-preview.form {
+  margin-top: 14rpx;
+}
+
 .status-tag {
   font-size: 22rpx;
   border-radius: 16rpx;
@@ -1726,6 +1842,36 @@ export default {
   color: #333;
   margin-bottom: 12rpx;
   display: block;
+}
+
+.upload-action-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.upload-btn {
+  flex: 1;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 10rpx;
+  background-color: #f3f4f6;
+  color: #333;
+  font-size: 24rpx;
+}
+
+.upload-btn::after {
+  border: none;
+}
+
+.upload-btn.primary {
+  background-color: #007aff;
+  color: #fff;
+  margin-right: 12rpx;
+}
+
+.upload-btn[disabled] {
+  opacity: 0.7;
 }
 
 .picker-value {

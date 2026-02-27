@@ -14,6 +14,7 @@ import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -88,6 +90,25 @@ public class AdminController {
             return ApiResponse.fail(e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail("查询会议室列表失败");
+        }
+    }
+
+    /**
+     * 上传会议室封面图。
+     *
+     * @param adminUserId 管理员用户ID
+     * @param file        图片文件
+     * @return 图片访问URL
+     */
+    @PostMapping(value = "/meeting-rooms/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<String> uploadMeetingRoomCover(@RequestParam Long adminUserId,
+                                                      @RequestParam("file") MultipartFile file) {
+        try {
+            return ApiResponse.success("上传封面图成功", adminService.uploadMeetingRoomCover(adminUserId, file));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("上传封面图失败，请稍后重试");
         }
     }
 

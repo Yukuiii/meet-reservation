@@ -129,7 +129,9 @@
 </template>
 
 <script>
-import { request } from '../../utils/request'
+import { buildAssetUrl, request } from '../../utils/request'
+
+const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
 
 /**
  * 首页 - 会议室列表
@@ -241,7 +243,12 @@ export default {
           url: '/api/meeting-rooms',
           method: 'GET'
         })
-        this.roomList = Array.isArray(list) ? list : []
+        this.roomList = Array.isArray(list)
+          ? list.map(item => ({
+            ...item,
+            image: buildAssetUrl(item.image || DEFAULT_ROOM_IMAGE)
+          }))
+          : []
         this.buildFilterOptions()
       } catch (error) {
         uni.showToast({ title: error.message || '加载会议室失败', icon: 'none' })
