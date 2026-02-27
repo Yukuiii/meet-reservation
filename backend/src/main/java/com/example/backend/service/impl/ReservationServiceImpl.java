@@ -15,6 +15,7 @@ import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.CreateReservationResponseVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -37,6 +38,7 @@ import java.util.stream.Collectors;
  * 预约业务实现。
  */
 @Service
+@RequiredArgsConstructor
 public class ReservationServiceImpl implements ReservationService {
 
     /**
@@ -80,21 +82,6 @@ public class ReservationServiceImpl implements ReservationService {
     private final ReservationMapper reservationMapper;
     private final MeetingRoomMapper meetingRoomMapper;
     private final UserMapper userMapper;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param reservationMapper 预约数据访问对象
-     * @param meetingRoomMapper 会议室数据访问对象
-     * @param userMapper        用户数据访问对象
-     */
-    public ReservationServiceImpl(ReservationMapper reservationMapper,
-                                  MeetingRoomMapper meetingRoomMapper,
-                                  UserMapper userMapper) {
-        this.reservationMapper = reservationMapper;
-        this.meetingRoomMapper = meetingRoomMapper;
-        this.userMapper = userMapper;
-    }
 
     /**
      * 查询会议室指定日期的占用时段。

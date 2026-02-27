@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import java.util.List;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,18 +19,10 @@ import com.example.backend.vo.MeetingRoomListItemVO;
 @RestController
 @RequestMapping("/api/meeting-rooms")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class MeetingRoomController {
 
     private final MeetingRoomService meetingRoomService;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param meetingRoomService 会议室业务
-     */
-    public MeetingRoomController(MeetingRoomService meetingRoomService) {
-        this.meetingRoomService = meetingRoomService;
-    }
 
     /**
      * 查询会议室列表。

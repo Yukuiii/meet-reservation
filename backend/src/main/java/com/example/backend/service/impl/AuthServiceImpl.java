@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -23,6 +24,7 @@ import com.example.backend.vo.LoginUserInfo;
  * 认证业务实现。
  */
 @Service
+@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     /**
@@ -31,15 +33,6 @@ public class AuthServiceImpl implements AuthService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
 
     private final UserMapper userMapper;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param userMapper 用户数据访问对象
-     */
-    public AuthServiceImpl(UserMapper userMapper) {
-        this.userMapper = userMapper;
-    }
 
     /**
      * 用户注册。

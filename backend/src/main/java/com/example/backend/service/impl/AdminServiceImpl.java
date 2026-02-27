@@ -22,6 +22,7 @@ import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
  * 管理员业务实现。
  */
 @Service
+@RequiredArgsConstructor
 public class AdminServiceImpl implements AdminService {
 
     /**
@@ -102,30 +104,6 @@ public class AdminServiceImpl implements AdminService {
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
     private final RoomImageMapper roomImageMapper;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param userMapper          用户数据访问对象
-     * @param reservationMapper   预约数据访问对象
-     * @param meetingRoomMapper   会议室数据访问对象
-     * @param roomEquipmentMapper 会议室设备关联数据访问对象
-     * @param equipmentMapper     设备数据访问对象
-     * @param roomImageMapper     会议室图片数据访问对象
-     */
-    public AdminServiceImpl(UserMapper userMapper,
-                            ReservationMapper reservationMapper,
-                            MeetingRoomMapper meetingRoomMapper,
-                            RoomEquipmentMapper roomEquipmentMapper,
-                            EquipmentMapper equipmentMapper,
-                            RoomImageMapper roomImageMapper) {
-        this.userMapper = userMapper;
-        this.reservationMapper = reservationMapper;
-        this.meetingRoomMapper = meetingRoomMapper;
-        this.roomEquipmentMapper = roomEquipmentMapper;
-        this.equipmentMapper = equipmentMapper;
-        this.roomImageMapper = roomImageMapper;
-    }
 
     /**
      * 查询待审核预约列表。

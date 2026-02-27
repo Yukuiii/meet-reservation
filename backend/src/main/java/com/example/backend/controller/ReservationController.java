@@ -8,6 +8,7 @@ import com.example.backend.vo.CreateReservationResponseVO;
 import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,18 +29,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/reservations")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class ReservationController {
 
     private final ReservationService reservationService;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param reservationService 预约业务
-     */
-    public ReservationController(ReservationService reservationService) {
-        this.reservationService = reservationService;
-    }
 
     /**
      * 查询会议室指定日期的占用状态。

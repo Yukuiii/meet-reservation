@@ -5,6 +5,7 @@ import com.example.backend.dto.LoginRequest;
 import com.example.backend.dto.RegisterRequest;
 import com.example.backend.service.AuthService;
 import com.example.backend.vo.LoginResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,18 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param authService 认证业务
-     */
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
 
     /**
      * 注册接口。

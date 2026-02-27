@@ -11,6 +11,7 @@ import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,18 +30,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class AdminController {
 
     private final AdminService adminService;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param adminService 管理员业务
-     */
-    public AdminController(AdminService adminService) {
-        this.adminService = adminService;
-    }
 
     /**
      * 查询待审核预约列表。

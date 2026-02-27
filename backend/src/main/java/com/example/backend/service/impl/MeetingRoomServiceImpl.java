@@ -11,6 +11,7 @@ import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.RoomImageMapper;
 import com.example.backend.service.MeetingRoomService;
 import com.example.backend.vo.MeetingRoomListItemVO;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
  * 会议室业务实现。
  */
 @Service
+@RequiredArgsConstructor
 public class MeetingRoomServiceImpl implements MeetingRoomService {
 
     /**
@@ -40,24 +42,6 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
     private final RoomImageMapper roomImageMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
-
-    /**
-     * 构造函数注入。
-     *
-     * @param meetingRoomMapper  会议室数据访问对象
-     * @param roomImageMapper    会议室图片数据访问对象
-     * @param roomEquipmentMapper 会议室设备关联数据访问对象
-     * @param equipmentMapper    设备数据访问对象
-     */
-    public MeetingRoomServiceImpl(MeetingRoomMapper meetingRoomMapper,
-                                  RoomImageMapper roomImageMapper,
-                                  RoomEquipmentMapper roomEquipmentMapper,
-                                  EquipmentMapper equipmentMapper) {
-        this.meetingRoomMapper = meetingRoomMapper;
-        this.roomImageMapper = roomImageMapper;
-        this.roomEquipmentMapper = roomEquipmentMapper;
-        this.equipmentMapper = equipmentMapper;
-    }
 
     /**
      * 查询会议室列表。
