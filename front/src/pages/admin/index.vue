@@ -1445,6 +1445,7 @@ export default {
 
 .modal-content {
   width: 680rpx;
+  height: 86vh;
   max-height: 86vh;
   background-color: #fff;
   border-radius: 16rpx;
@@ -1463,6 +1464,8 @@ export default {
 
 .modal-body {
   flex: 1;
+  min-height: 0;
+  height: 0;
   padding: 20rpx 24rpx;
   box-sizing: border-box;
 }
