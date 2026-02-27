@@ -4,11 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.backend.entity.Equipment;
 import com.example.backend.entity.MeetingRoom;
 import com.example.backend.entity.RoomEquipment;
-import com.example.backend.entity.RoomImage;
 import com.example.backend.mapper.EquipmentMapper;
 import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
-import com.example.backend.mapper.RoomImageMapper;
 import com.example.backend.service.MeetingRoomService;
 import com.example.backend.vo.MeetingRoomListItemVO;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +37,6 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
             "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&h=400&fit=crop";
 
     private final MeetingRoomMapper meetingRoomMapper;
-    private final RoomImageMapper roomImageMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
 
@@ -61,13 +58,11 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
         }
 
         List<Long> roomIds = rooms.stream().map(MeetingRoom::getId).toList();
-
-        Map<Long, String> firstImageMap = buildFirstImageMap(roomIds);
         Map<Long, List<String>> roomEquipmentMap = buildRoomEquipmentMap(roomIds);
 
         List<MeetingRoomListItemVO> result = new ArrayList<>(rooms.size());
         for (MeetingRoom room : rooms) {
-            result.add(buildRoomItem(room, firstImageMap, roomEquipmentMap));
+            result.add(buildRoomItem(room, roomEquipmentMap));
         }
         return result;
     }
@@ -85,58 +80,30 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
             return null;
         }
 
-        Map<Long, String> firstImageMap = buildFirstImageMap(Collections.singletonList(roomId));
         Map<Long, List<String>> roomEquipmentMap = buildRoomEquipmentMap(Collections.singletonList(roomId));
-        return buildRoomItem(room, firstImageMap, roomEquipmentMap);
+        return buildRoomItem(room, roomEquipmentMap);
     }
 
     /**
      * 构建会议室返回对象。
      *
      * @param room             会议室实体
-     * @param firstImageMap    图片映射
      * @param roomEquipmentMap 设备映射
      * @return 会议室返回对象
      */
-    private MeetingRoomListItemVO buildRoomItem(MeetingRoom room,
-                                                Map<Long, String> firstImageMap,
-                                                Map<Long, List<String>> roomEquipmentMap) {
+    private MeetingRoomListItemVO buildRoomItem(MeetingRoom room, Map<Long, List<String>> roomEquipmentMap) {
         MeetingRoomListItemVO item = new MeetingRoomListItemVO();
         item.setId(room.getId());
         item.setName(room.getName());
         item.setCapacity(room.getCapacity());
         item.setLocation(room.getLocation());
         item.setLocationBuilding(extractBuilding(room));
-        item.setImage(pickRoomImage(room, firstImageMap.get(room.getId())));
+        item.setImage(pickRoomImage(room));
         item.setDescription(room.getDescription());
         item.setEquipment(roomEquipmentMap.getOrDefault(room.getId(), Collections.emptyList()));
         item.setStatus(mapStatus(room.getStatus()));
         item.setStatusText(mapStatusText(room.getStatus()));
         return item;
-    }
-
-    /**
-     * 构建会议室首图映射。
-     *
-     * @param roomIds 会议室ID列表
-     * @return key为会议室ID，value为首图URL
-     */
-    private Map<Long, String> buildFirstImageMap(List<Long> roomIds) {
-        List<RoomImage> roomImages = roomImageMapper.selectList(
-                new LambdaQueryWrapper<RoomImage>()
-                        .in(RoomImage::getRoomId, roomIds)
-                        .orderByAsc(RoomImage::getSortOrder)
-                        .orderByAsc(RoomImage::getId)
-        );
-
-        Map<Long, String> firstImageMap = new HashMap<>();
-        // 仅记录每个会议室第一张图，后续同 roomId 的图片会被忽略。
-        for (RoomImage roomImage : roomImages) {
-            if (StringUtils.hasText(roomImage.getImageUrl())) {
-                firstImageMap.putIfAbsent(roomImage.getRoomId(), roomImage.getImageUrl());
-            }
-        }
-        return firstImageMap;
     }
 
     /**
@@ -211,16 +178,12 @@ public class MeetingRoomServiceImpl implements MeetingRoomService {
     /**
      * 选择会议室展示图片。
      *
-     * @param room          会议室实体
-     * @param fallbackImage 图片表首图
+     * @param room 会议室实体
      * @return 最终图片URL
      */
-    private String pickRoomImage(MeetingRoom room, String fallbackImage) {
+    private String pickRoomImage(MeetingRoom room) {
         if (StringUtils.hasText(room.getCoverImage())) {
             return room.getCoverImage();
-        }
-        if (StringUtils.hasText(fallbackImage)) {
-            return fallbackImage;
         }
         return DEFAULT_ROOM_IMAGE;
     }

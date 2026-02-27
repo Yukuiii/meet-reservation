@@ -55,21 +55,7 @@ CREATE TABLE `meeting_room` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='会议室表';
 
 -- ============================================
--- 3. 会议室图片表
--- 支持会议室多图展示
--- ============================================
-CREATE TABLE `room_image` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '图片ID',
-    `room_id` BIGINT UNSIGNED NOT NULL COMMENT '会议室ID',
-    `image_url` VARCHAR(512) NOT NULL COMMENT '图片URL',
-    `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序权重',
-    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_room_id` (`room_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='会议室图片表';
-
--- ============================================
--- 4. 设备类型表
+-- 3. 设备类型表
 -- 定义可用的设备类型
 -- ============================================
 CREATE TABLE `equipment` (
@@ -84,7 +70,7 @@ CREATE TABLE `equipment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='设备类型表';
 
 -- ============================================
--- 5. 会议室设备关联表
+-- 4. 会议室设备关联表
 -- 会议室与设备的多对多关系
 -- ============================================
 CREATE TABLE `room_equipment` (
@@ -99,7 +85,7 @@ CREATE TABLE `room_equipment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='会议室设备关联表';
 
 -- ============================================
--- 6. 预约表
+-- 5. 预约表
 -- 核心业务表，存储预约信息
 -- ============================================
 CREATE TABLE `reservation` (
@@ -181,20 +167,6 @@ ON DUPLICATE KEY UPDATE
 `description` = VALUES(`description`),
 `cover_image` = VALUES(`cover_image`),
 `status` = VALUES(`status`),
-`sort_order` = VALUES(`sort_order`);
-
--- 插入会议室图片
-INSERT INTO `room_image` (`id`, `room_id`, `image_url`, `sort_order`) VALUES
-(1, 1, 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&h=800&fit=crop', 1),
-(2, 1, 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?w=1200&h=800&fit=crop', 2),
-(3, 2, 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=1200&h=800&fit=crop', 1),
-(4, 3, 'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=1200&h=800&fit=crop', 1),
-(5, 4, 'https://images.unsplash.com/photo-1462826303086-329426d1aef5?w=1200&h=800&fit=crop', 1),
-(6, 5, 'https://images.unsplash.com/photo-1503423571797-2d2bb372094a?w=1200&h=800&fit=crop', 1),
-(7, 6, 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=1200&h=800&fit=crop', 1)
-ON DUPLICATE KEY UPDATE
-`room_id` = VALUES(`room_id`),
-`image_url` = VALUES(`image_url`),
 `sort_order` = VALUES(`sort_order`);
 
 -- 插入会议室设备关联

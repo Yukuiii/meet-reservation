@@ -9,13 +9,11 @@ import com.example.backend.entity.Equipment;
 import com.example.backend.entity.MeetingRoom;
 import com.example.backend.entity.Reservation;
 import com.example.backend.entity.RoomEquipment;
-import com.example.backend.entity.RoomImage;
 import com.example.backend.entity.User;
 import com.example.backend.mapper.EquipmentMapper;
 import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
-import com.example.backend.mapper.RoomImageMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AdminService;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
@@ -116,7 +114,6 @@ public class AdminServiceImpl implements AdminService {
     private final MeetingRoomMapper meetingRoomMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
-    private final RoomImageMapper roomImageMapper;
 
     /**
      * 查询待审核预约列表。
@@ -229,7 +226,6 @@ public class AdminServiceImpl implements AdminService {
         List<Long> roomIds = roomList.stream().map(MeetingRoom::getId).toList();
         Map<Long, List<Long>> roomEquipmentIdMap = buildRoomEquipmentIdMap(roomIds);
         Map<Long, String> equipmentNameMap = buildEquipmentNameMap(roomEquipmentIdMap);
-        Map<Long, String> roomImageMap = buildRoomImageMap(roomIds);
 
         List<AdminMeetingRoomVO> result = new ArrayList<>(roomList.size());
         for (MeetingRoom room : roomList) {
@@ -241,7 +237,7 @@ public class AdminServiceImpl implements AdminService {
             roomVO.setBuilding(room.getBuilding());
             roomVO.setFloor(room.getFloor());
             roomVO.setDescription(room.getDescription());
-            roomVO.setCoverImage(selectRoomImage(room, roomImageMap.get(room.getId())));
+            roomVO.setCoverImage(selectRoomImage(room));
             roomVO.setStatus(room.getStatus());
             roomVO.setStatusText(mapRoomStatusText(room.getStatus()));
             roomVO.setSortOrder(room.getSortOrder() == null ? 0 : room.getSortOrder());
@@ -905,42 +901,14 @@ public class AdminServiceImpl implements AdminService {
     }
 
     /**
-     * 构建会议室首图映射。
-     *
-     * @param roomIds 会议室ID列表
-     * @return key为会议室ID，value为首图URL
-     */
-    private Map<Long, String> buildRoomImageMap(List<Long> roomIds) {
-        List<RoomImage> imageList = roomImageMapper.selectList(
-                new LambdaQueryWrapper<RoomImage>()
-                        .in(RoomImage::getRoomId, roomIds)
-                        .orderByAsc(RoomImage::getSortOrder)
-                        .orderByAsc(RoomImage::getId)
-        );
-
-        Map<Long, String> imageMap = new HashMap<>();
-        for (RoomImage roomImage : imageList) {
-            if (!StringUtils.hasText(roomImage.getImageUrl())) {
-                continue;
-            }
-            imageMap.putIfAbsent(roomImage.getRoomId(), roomImage.getImageUrl());
-        }
-        return imageMap;
-    }
-
-    /**
      * 选择会议室展示图。
      *
-     * @param room          会议室实体
-     * @param fallbackImage 图片表首图
+     * @param room 会议室实体
      * @return 最终图片URL
      */
-    private String selectRoomImage(MeetingRoom room, String fallbackImage) {
+    private String selectRoomImage(MeetingRoom room) {
         if (StringUtils.hasText(room.getCoverImage())) {
             return room.getCoverImage();
-        }
-        if (StringUtils.hasText(fallbackImage)) {
-            return fallbackImage;
         }
         return "";
     }
