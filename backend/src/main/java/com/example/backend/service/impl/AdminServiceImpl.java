@@ -3,6 +3,7 @@ package com.example.backend.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
+import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.entity.Equipment;
 import com.example.backend.entity.MeetingRoom;
@@ -18,11 +19,13 @@ import com.example.backend.mapper.RoomImageMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AdminService;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
+import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -89,6 +92,16 @@ public class AdminServiceImpl implements AdminService {
      * 会议室状态：维护中。
      */
     private static final int ROOM_MAINTENANCE = 2;
+
+    /**
+     * 设备状态：停用。
+     */
+    private static final int EQUIPMENT_DISABLED = 0;
+
+    /**
+     * 设备状态：正常。
+     */
+    private static final int EQUIPMENT_NORMAL = 1;
 
     /**
      * 默认冲突协调取消原因。
@@ -350,7 +363,7 @@ public class AdminServiceImpl implements AdminService {
 
         List<Equipment> equipmentList = equipmentMapper.selectList(
                 new LambdaQueryWrapper<Equipment>()
-                        .eq(Equipment::getStatus, 1)
+                        .eq(Equipment::getStatus, EQUIPMENT_NORMAL)
                         .orderByAsc(Equipment::getId)
         );
 
@@ -362,6 +375,139 @@ public class AdminServiceImpl implements AdminService {
             result.add(item);
         }
         return result;
+    }
+
+    /**
+     * 查询设备管理列表。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 设备管理列表
+     */
+    @Override
+    public List<AdminEquipmentManageVO> listEquipments(Long adminUserId) {
+        ensureAdminUser(adminUserId);
+
+        List<Equipment> equipmentList = equipmentMapper.selectList(
+                new LambdaQueryWrapper<Equipment>()
+                        .orderByDesc(Equipment::getStatus)
+                        .orderByAsc(Equipment::getId)
+        );
+
+        List<AdminEquipmentManageVO> result = new ArrayList<>(equipmentList.size());
+        for (Equipment equipment : equipmentList) {
+            AdminEquipmentManageVO item = new AdminEquipmentManageVO();
+            item.setId(equipment.getId());
+            item.setName(equipment.getName());
+            item.setIcon(equipment.getIcon());
+            item.setDescription(equipment.getDescription());
+            item.setStatus(equipment.getStatus());
+            item.setStatusText(mapEquipmentStatusText(equipment.getStatus()));
+            result.add(item);
+        }
+        return result;
+    }
+
+    /**
+     * 新增设备。
+     *
+     * @param request 保存参数
+     * @return 新设备ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createEquipment(AdminSaveEquipmentRequest request) {
+        validateSaveEquipmentRequest(request);
+        ensureAdminUser(request.getAdminUserId());
+
+        String finalName = cleanText(request.getName());
+        ensureEquipmentNameUnique(finalName, null);
+
+        Equipment entity = new Equipment();
+        fillEquipmentEntity(entity, request);
+        entity.setCreatedAt(LocalDateTime.now());
+
+        int rows;
+        try {
+            rows = equipmentMapper.insert(entity);
+        } catch (DuplicateKeyException exception) {
+            throw new IllegalArgumentException("设备名称已存在");
+        }
+        if (rows != 1 || entity.getId() == null) {
+            throw new IllegalStateException("新增设备失败，请稍后重试");
+        }
+        return entity.getId();
+    }
+
+    /**
+     * 编辑设备。
+     *
+     * @param equipmentId 设备ID
+     * @param request     保存参数
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateEquipment(Long equipmentId, AdminSaveEquipmentRequest request) {
+        if (equipmentId == null || equipmentId <= 0) {
+            throw new IllegalArgumentException("设备ID不合法");
+        }
+        if (equipmentMapper.selectById(equipmentId) == null) {
+            throw new IllegalArgumentException("设备不存在");
+        }
+
+        validateSaveEquipmentRequest(request);
+        ensureAdminUser(request.getAdminUserId());
+
+        String finalName = cleanText(request.getName());
+        ensureEquipmentNameUnique(finalName, equipmentId);
+
+        Equipment updateEntity = new Equipment();
+        fillEquipmentEntity(updateEntity, request);
+
+        int rows;
+        try {
+            rows = equipmentMapper.update(
+                    updateEntity,
+                    new LambdaQueryWrapper<Equipment>().eq(Equipment::getId, equipmentId)
+            );
+        } catch (DuplicateKeyException exception) {
+            throw new IllegalArgumentException("设备名称已存在");
+        }
+        if (rows != 1) {
+            throw new IllegalStateException("编辑设备失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 停用设备。
+     *
+     * @param equipmentId 设备ID
+     * @param adminUserId 管理员用户ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void disableEquipment(Long equipmentId, Long adminUserId) {
+        ensureAdminUser(adminUserId);
+        if (equipmentId == null || equipmentId <= 0) {
+            throw new IllegalArgumentException("设备ID不合法");
+        }
+
+        Equipment equipment = equipmentMapper.selectById(equipmentId);
+        if (equipment == null) {
+            throw new IllegalArgumentException("设备不存在");
+        }
+        if (Integer.valueOf(EQUIPMENT_DISABLED).equals(equipment.getStatus())) {
+            return;
+        }
+
+        Equipment updateEntity = new Equipment();
+        updateEntity.setStatus(EQUIPMENT_DISABLED);
+        int rows = equipmentMapper.update(
+                updateEntity,
+                new LambdaQueryWrapper<Equipment>().eq(Equipment::getId, equipmentId)
+        );
+        if (rows != 1) {
+            throw new IllegalStateException("停用设备失败，请稍后重试");
+        }
     }
 
     /**
@@ -553,6 +699,65 @@ public class AdminServiceImpl implements AdminService {
         entity.setCoverImage(optionalText(request.getCoverImage()));
         entity.setStatus(normalizeRoomStatus(request.getStatus()));
         entity.setSortOrder(normalizeSortOrder(request.getSortOrder()));
+    }
+
+    /**
+     * 校验设备保存参数。
+     *
+     * @param request 保存参数
+     */
+    private void validateSaveEquipmentRequest(AdminSaveEquipmentRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("设备参数不能为空");
+        }
+        String finalName = cleanText(request.getName());
+        String finalIcon = cleanText(request.getIcon());
+        String finalDescription = cleanText(request.getDescription());
+
+        if (!StringUtils.hasText(finalName)) {
+            throw new IllegalArgumentException("设备名称不能为空");
+        }
+        if (finalName.length() > 32) {
+            throw new IllegalArgumentException("设备名称长度不能超过32个字符");
+        }
+        if (finalIcon.length() > 256) {
+            throw new IllegalArgumentException("设备图标地址长度不能超过256个字符");
+        }
+        if (finalDescription.length() > 128) {
+            throw new IllegalArgumentException("设备描述长度不能超过128个字符");
+        }
+        normalizeEquipmentStatus(request.getStatus());
+    }
+
+    /**
+     * 将请求参数写入设备实体。
+     *
+     * @param entity  设备实体
+     * @param request 保存参数
+     */
+    private void fillEquipmentEntity(Equipment entity, AdminSaveEquipmentRequest request) {
+        entity.setName(cleanText(request.getName()));
+        entity.setIcon(optionalText(request.getIcon()));
+        entity.setDescription(optionalText(request.getDescription()));
+        entity.setStatus(normalizeEquipmentStatus(request.getStatus()));
+    }
+
+    /**
+     * 校验设备名称唯一性。
+     *
+     * @param name             设备名称
+     * @param excludeEquipmentId 排除的设备ID，null表示不排除
+     */
+    private void ensureEquipmentNameUnique(String name, Long excludeEquipmentId) {
+        LambdaQueryWrapper<Equipment> queryWrapper = new LambdaQueryWrapper<Equipment>()
+                .eq(Equipment::getName, name);
+        if (excludeEquipmentId != null) {
+            queryWrapper.ne(Equipment::getId, excludeEquipmentId);
+        }
+        Equipment exists = equipmentMapper.selectOne(queryWrapper.last("limit 1"));
+        if (exists != null) {
+            throw new IllegalArgumentException("设备名称已存在");
+        }
     }
 
     /**
@@ -861,6 +1066,23 @@ public class AdminServiceImpl implements AdminService {
     }
 
     /**
+     * 状态码转换为设备状态文案。
+     *
+     * @param status 状态码
+     * @return 状态文案
+     */
+    private String mapEquipmentStatusText(Integer status) {
+        if (status == null) {
+            return "未知状态";
+        }
+        return switch (status) {
+            case EQUIPMENT_DISABLED -> "停用";
+            case EQUIPMENT_NORMAL -> "正常";
+            default -> "未知状态";
+        };
+    }
+
+    /**
      * 时间格式化为 HH:mm。
      *
      * @param time 时间
@@ -900,6 +1122,22 @@ public class AdminServiceImpl implements AdminService {
                 && !Objects.equals(status, ROOM_NORMAL)
                 && !Objects.equals(status, ROOM_MAINTENANCE)) {
             throw new IllegalArgumentException("会议室状态不合法");
+        }
+        return status;
+    }
+
+    /**
+     * 标准化设备状态。
+     *
+     * @param status 原始状态
+     * @return 状态码
+     */
+    private Integer normalizeEquipmentStatus(Integer status) {
+        if (status == null) {
+            return EQUIPMENT_NORMAL;
+        }
+        if (!Objects.equals(status, EQUIPMENT_DISABLED) && !Objects.equals(status, EQUIPMENT_NORMAL)) {
+            throw new IllegalArgumentException("设备状态不合法");
         }
         return status;
     }

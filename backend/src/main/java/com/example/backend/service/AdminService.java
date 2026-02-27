@@ -2,8 +2,10 @@ package com.example.backend.service;
 
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
+import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
+import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
@@ -71,6 +73,38 @@ public interface AdminService {
      * @return 设备选项列表
      */
     List<AdminEquipmentVO> listEquipmentOptions(Long adminUserId);
+
+    /**
+     * 查询设备管理列表。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 设备管理列表
+     */
+    List<AdminEquipmentManageVO> listEquipments(Long adminUserId);
+
+    /**
+     * 新增设备。
+     *
+     * @param request 保存参数
+     * @return 新设备ID
+     */
+    Long createEquipment(AdminSaveEquipmentRequest request);
+
+    /**
+     * 编辑设备。
+     *
+     * @param equipmentId 设备ID
+     * @param request     保存参数
+     */
+    void updateEquipment(Long equipmentId, AdminSaveEquipmentRequest request);
+
+    /**
+     * 停用设备。
+     *
+     * @param equipmentId 设备ID
+     * @param adminUserId 管理员用户ID
+     */
+    void disableEquipment(Long equipmentId, Long adminUserId);
 
     /**
      * 查询统计概览。

@@ -26,6 +26,13 @@
       </view>
       <view
         class="tab-item"
+        :class="{ active: activeTab === 'equipment' }"
+        @click="switchTab('equipment')"
+      >
+        设备管理
+      </view>
+      <view
+        class="tab-item"
         :class="{ active: activeTab === 'stats' }"
         @click="switchTab('stats')"
       >
@@ -144,6 +151,43 @@
 
         <view class="empty-state" v-if="!roomLoading && roomList.length === 0">
           <text>暂无会议室数据</text>
+        </view>
+      </view>
+
+      <view class="panel" v-if="activeTab === 'equipment'">
+        <view class="room-toolbar">
+          <button class="action-btn" @click="openCreateEquipment">新增设备</button>
+        </view>
+
+        <view class="loading-state" v-if="equipmentLoading">
+          <text>设备数据加载中...</text>
+        </view>
+
+        <template v-else-if="equipmentList.length > 0">
+          <view class="room-card" v-for="item in equipmentList" :key="item.id">
+            <view class="card-header">
+              <text class="card-title">{{ item.name }}</text>
+              <text class="status-tag" :class="equipmentStatusClass(item.status)">
+                {{ item.statusText }}
+              </text>
+            </view>
+            <view class="card-line">图标：{{ item.icon || '-' }}</view>
+            <view class="card-line">描述：{{ item.description || '-' }}</view>
+            <view class="card-actions">
+              <button class="mini-btn" @click="openEditEquipment(item)">编辑</button>
+              <button
+                class="mini-btn disable"
+                v-if="Number(item.status) !== 0"
+                @click="disableEquipment(item)"
+              >
+                停用
+              </button>
+            </view>
+          </view>
+        </template>
+
+        <view class="empty-state" v-if="!equipmentLoading && equipmentList.length === 0">
+          <text>暂无设备数据</text>
         </view>
       </view>
 
@@ -418,6 +462,66 @@
         </view>
       </view>
     </view>
+
+    <view class="modal-mask" v-if="showEquipmentModal" @click="closeEquipmentModal">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text>{{ equipmentForm.id ? '编辑设备' : '新增设备' }}</text>
+        </view>
+
+        <scroll-view class="modal-body" scroll-y>
+          <view class="form-item column">
+            <text class="label">设备名称</text>
+            <input
+              class="input"
+              type="text"
+              v-model="equipmentForm.name"
+              placeholder="请输入设备名称"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">图标URL</text>
+            <input
+              class="input"
+              type="text"
+              v-model="equipmentForm.icon"
+              placeholder="请输入图标URL（选填）"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">状态</text>
+            <picker
+              :range="equipmentStatusLabels"
+              :value="equipmentStatusIndex"
+              @change="handleEquipmentStatusChange"
+            >
+              <view class="picker-value">{{ equipmentStatusText(equipmentForm.status) }}</view>
+            </picker>
+          </view>
+
+          <view class="form-item column">
+            <text class="label">设备描述</text>
+            <textarea
+              class="textarea"
+              v-model="equipmentForm.description"
+              placeholder="请输入设备描述（选填）"
+              placeholder-class="placeholder"
+            />
+          </view>
+        </scroll-view>
+
+        <view class="modal-footer">
+          <button class="modal-btn cancel" @click="closeEquipmentModal">取消</button>
+          <button class="modal-btn confirm" :disabled="equipmentSaving" @click="submitEquipmentForm">
+            {{ equipmentSaving ? '保存中...' : '保存' }}
+          </button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -427,6 +531,11 @@ import { request } from '../../utils/request'
 const ROOM_STATUS_OPTIONS = [
   { value: 1, label: '正常' },
   { value: 2, label: '维护中' },
+  { value: 0, label: '停用' }
+]
+
+const EQUIPMENT_STATUS_OPTIONS = [
+  { value: 1, label: '正常' },
   { value: 0, label: '停用' }
 ]
 
@@ -471,6 +580,20 @@ function createDefaultRoomForm() {
 }
 
 /**
+ * 创建默认设备表单。
+ * @returns {Object}
+ */
+function createDefaultEquipmentForm() {
+  return {
+    id: null,
+    name: '',
+    icon: '',
+    description: '',
+    status: 1
+  }
+}
+
+/**
  * 创建默认紧急占用表单。
  * @returns {Object}
  */
@@ -489,7 +612,7 @@ function createDefaultEmergencyForm() {
 
 /**
  * 管理员页面
- * @description 审核预约、管理会议室、查看统计并处理紧急占用
+ * @description 审核预约、管理会议室和设备、查看统计并处理紧急占用
  */
 export default {
   data() {
@@ -509,6 +632,12 @@ export default {
       showRoomModal: false,
       roomSaving: false,
       roomForm: createDefaultRoomForm(),
+      // 设备模块
+      equipmentLoading: false,
+      equipmentList: [],
+      showEquipmentModal: false,
+      equipmentSaving: false,
+      equipmentForm: createDefaultEquipmentForm(),
       // 统计模块
       statsLoading: false,
       stats: createDefaultStats(),
@@ -547,6 +676,23 @@ export default {
      */
     roomStatusIndex() {
       const index = ROOM_STATUS_OPTIONS.findIndex(item => item.value === Number(this.roomForm.status))
+      return index >= 0 ? index : 0
+    },
+
+    /**
+     * 设备状态文案列表（用于picker）。
+     * @returns {Array}
+     */
+    equipmentStatusLabels() {
+      return EQUIPMENT_STATUS_OPTIONS.map(item => item.label)
+    },
+
+    /**
+     * 当前设备状态在picker中的索引。
+     * @returns {Number}
+     */
+    equipmentStatusIndex() {
+      const index = EQUIPMENT_STATUS_OPTIONS.findIndex(item => item.value === Number(this.equipmentForm.status))
       return index >= 0 ? index : 0
     },
 
@@ -618,6 +764,7 @@ export default {
       await Promise.all([
         this.loadPendingReservations(),
         this.loadMeetingRooms(),
+        this.loadEquipmentList(),
         this.loadEquipmentOptions(),
         this.loadStats()
       ])
@@ -643,6 +790,10 @@ export default {
       }
       if (this.activeTab === 'room') {
         await Promise.all([this.loadMeetingRooms(), this.loadEquipmentOptions(), this.loadStats()])
+        return
+      }
+      if (this.activeTab === 'equipment') {
+        await Promise.all([this.loadEquipmentList(), this.loadEquipmentOptions(), this.loadMeetingRooms()])
         return
       }
       if (this.activeTab === 'stats') {
@@ -749,6 +900,24 @@ export default {
     },
 
     /**
+     * 加载设备管理列表。
+     */
+    async loadEquipmentList() {
+      this.equipmentLoading = true
+      try {
+        const list = await request({
+          url: `/api/admin/equipments/manage?adminUserId=${this.adminUserId}`,
+          method: 'GET'
+        })
+        this.equipmentList = Array.isArray(list) ? list : []
+      } catch (error) {
+        uni.showToast({ title: error.message || '加载设备列表失败', icon: 'none' })
+      } finally {
+        this.equipmentLoading = false
+      }
+    },
+
+    /**
      * 加载设备选项。
      */
     async loadEquipmentOptions() {
@@ -818,6 +987,136 @@ export default {
         return
       }
       this.showRoomModal = false
+    },
+
+    /**
+     * 打开新增设备弹窗。
+     */
+    openCreateEquipment() {
+      this.equipmentForm = createDefaultEquipmentForm()
+      this.showEquipmentModal = true
+    },
+
+    /**
+     * 打开编辑设备弹窗。
+     * @param {Object} equipment 设备数据
+     */
+    openEditEquipment(equipment) {
+      this.equipmentForm = {
+        id: equipment.id,
+        name: equipment.name || '',
+        icon: equipment.icon || '',
+        description: equipment.description || '',
+        status: Number(equipment.status)
+      }
+      this.showEquipmentModal = true
+    },
+
+    /**
+     * 关闭设备弹窗。
+     */
+    closeEquipmentModal() {
+      if (this.equipmentSaving) {
+        return
+      }
+      this.showEquipmentModal = false
+    },
+
+    /**
+     * 修改设备状态。
+     * @param {Object} event picker事件
+     */
+    handleEquipmentStatusChange(event) {
+      const index = Number(event.detail.value)
+      const option = EQUIPMENT_STATUS_OPTIONS[index]
+      this.equipmentForm.status = option ? option.value : 1
+    },
+
+    /**
+     * 提交设备表单。
+     */
+    async submitEquipmentForm() {
+      const finalName = (this.equipmentForm.name || '').trim()
+
+      if (!finalName) {
+        uni.showToast({ title: '请输入设备名称', icon: 'none' })
+        return
+      }
+      if (this.equipmentSaving) {
+        return
+      }
+
+      const payload = {
+        adminUserId: this.adminUserId,
+        name: finalName,
+        icon: (this.equipmentForm.icon || '').trim(),
+        description: (this.equipmentForm.description || '').trim(),
+        status: Number(this.equipmentForm.status)
+      }
+
+      this.equipmentSaving = true
+      try {
+        if (this.equipmentForm.id) {
+          await request({
+            url: `/api/admin/equipments/${this.equipmentForm.id}`,
+            method: 'PUT',
+            data: payload
+          })
+          uni.showToast({ title: '编辑成功', icon: 'success' })
+        } else {
+          await request({
+            url: '/api/admin/equipments',
+            method: 'POST',
+            data: payload
+          })
+          uni.showToast({ title: '新增成功', icon: 'success' })
+        }
+
+        this.showEquipmentModal = false
+        await Promise.all([
+          this.loadEquipmentList(),
+          this.loadEquipmentOptions(),
+          this.loadMeetingRooms()
+        ])
+      } catch (error) {
+        uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+      } finally {
+        this.equipmentSaving = false
+      }
+    },
+
+    /**
+     * 停用设备。
+     * @param {Object} equipment 设备数据
+     */
+    disableEquipment(equipment) {
+      uni.showModal({
+        title: '确认停用',
+        content: `确定停用设备【${equipment.name}】吗？`,
+        success: async (res) => {
+          if (!res.confirm) {
+            return
+          }
+
+          try {
+            await request({
+              url: `/api/admin/equipments/${equipment.id}/disable`,
+              method: 'POST',
+              data: {
+                adminUserId: this.adminUserId
+              }
+            })
+            uni.showToast({ title: '停用成功', icon: 'success' })
+            await Promise.all([
+              this.loadEquipmentList(),
+              this.loadEquipmentOptions(),
+              this.loadMeetingRooms()
+            ])
+          } catch (error) {
+            uni.showToast({ title: error.message || '停用失败', icon: 'none' })
+          }
+        }
+      })
     },
 
     /**
@@ -1082,12 +1381,31 @@ export default {
     },
 
     /**
+     * 设备状态对应样式类。
+     * @param {Number} status 状态码
+     * @returns {String}
+     */
+    equipmentStatusClass(status) {
+      return Number(status) === 1 ? 'normal' : 'disabled'
+    },
+
+    /**
      * 会议室状态文案转换。
      * @param {Number} status 状态码
      * @returns {String}
      */
     roomStatusText(status) {
       const option = ROOM_STATUS_OPTIONS.find(item => item.value === Number(status))
+      return option ? option.label : '未知状态'
+    },
+
+    /**
+     * 设备状态文案转换。
+     * @param {Number} status 状态码
+     * @returns {String}
+     */
+    equipmentStatusText(status) {
+      const option = EQUIPMENT_STATUS_OPTIONS.find(item => item.value === Number(status))
       return option ? option.label : '未知状态'
     },
 
