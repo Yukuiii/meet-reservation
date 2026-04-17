@@ -315,6 +315,10 @@ export default {
         uni.showToast({ title: '该时段已被占用', icon: 'none' })
         return
       }
+      if (this.isStartedTimeSlot(this.selectedDate, slot.start)) {
+        uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
+        return
+      }
       slot.selected = !slot.selected
     },
 
@@ -366,6 +370,10 @@ export default {
 
       const startTime = this.selectedSlots[0].start
       const endTime = this.selectedSlots[this.selectedSlots.length - 1].end
+      if (this.isStartedTimeSlot(this.selectedDate, startTime)) {
+        uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
+        return
+      }
 
       this.submitting = true
       try {
@@ -410,6 +418,27 @@ export default {
         }
       }
       return true
+    },
+
+    /**
+     * 判断时段是否已经达到开始时间。
+     * @param {String} dateText 日期字符串
+     * @param {String} startTime 开始时间 HH:mm
+     * @returns {Boolean}
+     */
+    isStartedTimeSlot(dateText, startTime) {
+      return dateText === this.formatDate(new Date()) && startTime <= this.currentTimeText()
+    },
+
+    /**
+     * 获取当前时间字符串。
+     * @returns {String}
+     */
+    currentTimeText() {
+      const now = new Date()
+      const hour = `${now.getHours()}`.padStart(2, '0')
+      const minute = `${now.getMinutes()}`.padStart(2, '0')
+      return `${hour}:${minute}`
     },
 
     /**

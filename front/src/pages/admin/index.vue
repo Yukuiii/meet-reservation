@@ -33,6 +33,13 @@
       </view>
       <view
         class="tab-item"
+        :class="{ active: activeTab === 'admin-user' }"
+        @click="switchTab('admin-user')"
+      >
+        管理员
+      </view>
+      <view
+        class="tab-item"
         :class="{ active: activeTab === 'stats' }"
         @click="switchTab('stats')"
       >
@@ -71,13 +78,14 @@
             <view class="card-line">参与人数：{{ item.attendeeCount || 0 }}人</view>
             <view class="card-line">事由：{{ item.purpose || '-' }}</view>
             <input
+              v-if="item.canReview"
               class="reject-input"
               type="text"
               v-model="item.rejectReasonDraft"
               placeholder="驳回原因（不填默认：管理员驳回）"
               placeholder-class="placeholder"
             />
-            <view class="card-actions">
+            <view class="card-actions" v-if="item.canReview">
               <button
                 class="mini-btn reject"
                 :disabled="reviewingId === item.id"
@@ -193,6 +201,46 @@
 
         <view class="empty-state" v-if="!equipmentLoading && equipmentList.length === 0">
           <text>暂无设备数据</text>
+        </view>
+      </view>
+
+      <view class="panel" v-if="activeTab === 'admin-user'">
+        <view class="room-toolbar">
+          <button class="action-btn" @click="openCreateAdmin">新增管理员</button>
+        </view>
+
+        <view class="loading-state" v-if="adminLoading">
+          <text>管理员数据加载中...</text>
+        </view>
+
+        <template v-else-if="adminList.length > 0">
+          <view class="room-card" v-for="item in adminList" :key="item.id">
+            <view class="card-header">
+              <text class="card-title">{{ item.nickname || item.username }}</text>
+              <text class="status-tag" :class="adminStatusClass(item.status)">
+                {{ item.statusText }}
+              </text>
+            </view>
+            <view class="card-line">用户名：{{ item.username || '-' }}</view>
+            <view class="card-line">昵称：{{ item.nickname || '-' }}</view>
+            <view class="card-line">手机号：{{ item.phone || '-' }}</view>
+            <view class="card-line">邮箱：{{ item.email || '-' }}</view>
+            <view class="card-line">创建时间：{{ item.createdAt || '-' }}</view>
+            <view class="card-actions">
+              <button class="mini-btn" @click="openEditAdmin(item)">编辑</button>
+              <button
+                class="mini-btn disable"
+                v-if="Number(item.id) !== Number(adminUserId)"
+                @click="deleteAdmin(item)"
+              >
+                删除
+              </button>
+            </view>
+          </view>
+        </template>
+
+        <view class="empty-state" v-if="!adminLoading && adminList.length === 0">
+          <text>暂无管理员账号</text>
         </view>
       </view>
 
@@ -550,6 +598,90 @@
         </view>
       </view>
     </view>
+
+    <view class="modal-mask" v-if="showAdminModal" @click="closeAdminModal">
+      <view class="modal-content" @click.stop>
+        <view class="modal-header">
+          <text>{{ adminForm.id ? '编辑管理员' : '新增管理员' }}</text>
+        </view>
+
+        <scroll-view class="modal-body" scroll-y>
+          <view class="form-item column">
+            <text class="label">用户名</text>
+            <input
+              class="input"
+              type="text"
+              v-model="adminForm.username"
+              placeholder="请输入管理员用户名"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">昵称</text>
+            <input
+              class="input"
+              type="text"
+              v-model="adminForm.nickname"
+              placeholder="不填默认使用用户名"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">手机号</text>
+            <input
+              class="input"
+              type="number"
+              v-model="adminForm.phone"
+              placeholder="请输入手机号"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">邮箱</text>
+            <input
+              class="input"
+              type="text"
+              v-model="adminForm.email"
+              placeholder="选填"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">密码</text>
+            <input
+              class="input"
+              password
+              type="text"
+              v-model="adminForm.password"
+              :placeholder="adminForm.id ? '不修改密码请留空' : '请输入登录密码'"
+              placeholder-class="placeholder"
+            />
+          </view>
+
+          <view class="form-item column">
+            <text class="label">状态</text>
+            <picker
+              :range="adminStatusLabels"
+              :value="adminStatusIndex"
+              @change="handleAdminStatusChange"
+            >
+              <view class="picker-value">{{ adminStatusText(adminForm.status) }}</view>
+            </picker>
+          </view>
+        </scroll-view>
+
+        <view class="modal-footer">
+          <button class="modal-btn cancel" @click="closeAdminModal">取消</button>
+          <button class="modal-btn confirm" :disabled="adminSaving" @click="submitAdminForm">
+            {{ adminSaving ? '保存中...' : '保存' }}
+          </button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -567,6 +699,11 @@ const ROOM_STATUS_OPTIONS = [
 const EQUIPMENT_STATUS_OPTIONS = [
   { value: 1, label: '正常' },
   { value: 0, label: '停用' }
+]
+
+const ADMIN_STATUS_OPTIONS = [
+  { value: 1, label: '正常' },
+  { value: 0, label: '禁用' }
 ]
 
 /**
@@ -624,6 +761,22 @@ function createDefaultEquipmentForm() {
 }
 
 /**
+ * 创建默认管理员表单。
+ * @returns {Object}
+ */
+function createDefaultAdminForm() {
+  return {
+    id: null,
+    username: '',
+    nickname: '',
+    phone: '',
+    email: '',
+    password: '',
+    status: 1
+  }
+}
+
+/**
  * 创建默认紧急占用表单。
  * @returns {Object}
  */
@@ -642,7 +795,7 @@ function createDefaultEmergencyForm() {
 
 /**
  * 管理员页面
- * @description 审核预约、管理会议室和设备、查看统计并处理紧急占用
+ * @description 审核预约、管理会议室/设备/管理员、查看统计并处理紧急占用
  */
 export default {
   data() {
@@ -669,6 +822,12 @@ export default {
       showEquipmentModal: false,
       equipmentSaving: false,
       equipmentForm: createDefaultEquipmentForm(),
+      // 管理员模块
+      adminLoading: false,
+      adminList: [],
+      showAdminModal: false,
+      adminSaving: false,
+      adminForm: createDefaultAdminForm(),
       // 统计模块
       statsLoading: false,
       stats: createDefaultStats(),
@@ -724,6 +883,23 @@ export default {
      */
     equipmentStatusIndex() {
       const index = EQUIPMENT_STATUS_OPTIONS.findIndex(item => item.value === Number(this.equipmentForm.status))
+      return index >= 0 ? index : 0
+    },
+
+    /**
+     * 管理员状态文案列表（用于picker）。
+     * @returns {Array}
+     */
+    adminStatusLabels() {
+      return ADMIN_STATUS_OPTIONS.map(item => item.label)
+    },
+
+    /**
+     * 当前管理员状态在picker中的索引。
+     * @returns {Number}
+     */
+    adminStatusIndex() {
+      const index = ADMIN_STATUS_OPTIONS.findIndex(item => item.value === Number(this.adminForm.status))
       return index >= 0 ? index : 0
     },
 
@@ -797,6 +973,7 @@ export default {
         this.loadMeetingRooms(),
         this.loadEquipmentList(),
         this.loadEquipmentOptions(),
+        this.loadAdminList(),
         this.loadStats()
       ])
     },
@@ -825,6 +1002,10 @@ export default {
       }
       if (this.activeTab === 'equipment') {
         await Promise.all([this.loadEquipmentList(), this.loadEquipmentOptions(), this.loadMeetingRooms()])
+        return
+      }
+      if (this.activeTab === 'admin-user') {
+        await Promise.all([this.loadAdminList(), this.loadStats()])
         return
       }
       if (this.activeTab === 'stats') {
@@ -960,6 +1141,24 @@ export default {
         this.equipmentOptions = Array.isArray(list) ? list : []
       } catch (error) {
         uni.showToast({ title: error.message || '加载设备选项失败', icon: 'none' })
+      }
+    },
+
+    /**
+     * 加载管理员列表。
+     */
+    async loadAdminList() {
+      this.adminLoading = true
+      try {
+        const list = await request({
+          url: `/api/admin/admin-users?adminUserId=${this.adminUserId}`,
+          method: 'GET'
+        })
+        this.adminList = Array.isArray(list) ? list : []
+      } catch (error) {
+        uni.showToast({ title: error.message || '加载管理员失败', icon: 'none' })
+      } finally {
+        this.adminLoading = false
       }
     },
 
@@ -1119,6 +1318,152 @@ export default {
         return
       }
       this.showEquipmentModal = false
+    },
+
+    /**
+     * 打开新增管理员弹窗。
+     */
+    openCreateAdmin() {
+      this.adminForm = createDefaultAdminForm()
+      this.showAdminModal = true
+    },
+
+    /**
+     * 打开编辑管理员弹窗。
+     * @param {Object} admin 管理员数据
+     */
+    openEditAdmin(admin) {
+      this.adminForm = {
+        id: admin.id,
+        username: admin.username || '',
+        nickname: admin.nickname || '',
+        phone: admin.phone || '',
+        email: admin.email || '',
+        password: '',
+        status: Number(admin.status)
+      }
+      this.showAdminModal = true
+    },
+
+    /**
+     * 关闭管理员弹窗。
+     */
+    closeAdminModal() {
+      if (this.adminSaving) {
+        return
+      }
+      this.showAdminModal = false
+    },
+
+    /**
+     * 修改管理员状态。
+     * @param {Object} event picker事件
+     */
+    handleAdminStatusChange(event) {
+      const index = Number(event.detail.value)
+      const option = ADMIN_STATUS_OPTIONS[index]
+      this.adminForm.status = option ? option.value : 1
+    },
+
+    /**
+     * 提交管理员表单。
+     */
+    async submitAdminForm() {
+      const finalUsername = (this.adminForm.username || '').trim()
+      const finalPhone = (this.adminForm.phone || '').trim()
+      const finalPassword = (this.adminForm.password || '').trim()
+
+      if (!finalUsername) {
+        uni.showToast({ title: '请输入管理员用户名', icon: 'none' })
+        return
+      }
+      if (!finalPhone) {
+        uni.showToast({ title: '请输入手机号', icon: 'none' })
+        return
+      }
+      if (!this.adminForm.id && !finalPassword) {
+        uni.showToast({ title: '请输入登录密码', icon: 'none' })
+        return
+      }
+      if (this.adminSaving) {
+        return
+      }
+
+      const payload = {
+        adminUserId: this.adminUserId,
+        username: finalUsername,
+        nickname: (this.adminForm.nickname || '').trim(),
+        phone: finalPhone,
+        email: (this.adminForm.email || '').trim(),
+        password: finalPassword,
+        status: Number(this.adminForm.status)
+      }
+
+      this.adminSaving = true
+      try {
+        if (this.adminForm.id) {
+          await request({
+            url: `/api/admin/admin-users/${this.adminForm.id}`,
+            method: 'PUT',
+            data: payload
+          })
+          if (Number(this.adminForm.id) === Number(this.adminUserId)) {
+            const currentUserInfo = uni.getStorageSync('userInfo') || {}
+            uni.setStorageSync('userInfo', {
+              ...currentUserInfo,
+              username: finalUsername,
+              nickname: payload.nickname || finalUsername,
+              phone: finalPhone,
+              role: 1
+            })
+          }
+          uni.showToast({ title: '编辑成功', icon: 'success' })
+        } else {
+          await request({
+            url: '/api/admin/admin-users',
+            method: 'POST',
+            data: payload
+          })
+          uni.showToast({ title: '新增成功', icon: 'success' })
+        }
+
+        this.showAdminModal = false
+        await Promise.all([this.loadAdminList(), this.loadStats()])
+      } catch (error) {
+        uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+      } finally {
+        this.adminSaving = false
+      }
+    },
+
+    /**
+     * 删除管理员。
+     * @param {Object} admin 管理员数据
+     */
+    deleteAdmin(admin) {
+      uni.showModal({
+        title: '确认删除',
+        content: `确定删除管理员【${admin.nickname || admin.username}】吗？`,
+        success: async (res) => {
+          if (!res.confirm) {
+            return
+          }
+
+          try {
+            await request({
+              url: `/api/admin/admin-users/${admin.id}/delete`,
+              method: 'POST',
+              data: {
+                adminUserId: this.adminUserId
+              }
+            })
+            uni.showToast({ title: '删除成功', icon: 'success' })
+            await Promise.all([this.loadAdminList(), this.loadStats()])
+          } catch (error) {
+            uni.showToast({ title: error.message || '删除失败', icon: 'none' })
+          }
+        }
+      })
     },
 
     /**
@@ -1405,6 +1750,10 @@ export default {
         uni.showToast({ title: '开始时间必须早于结束时间', icon: 'none' })
         return
       }
+      if (this.isStartedTimeSlot(this.emergencyForm.reservationDate, this.emergencyForm.startTime)) {
+        uni.showToast({ title: '今天已开始的时段不可紧急占用', icon: 'none' })
+        return
+      }
       if (!(this.emergencyForm.title || '').trim()) {
         uni.showToast({ title: '请输入占用主题', icon: 'none' })
         return
@@ -1510,6 +1859,46 @@ export default {
     equipmentStatusText(status) {
       const option = EQUIPMENT_STATUS_OPTIONS.find(item => item.value === Number(status))
       return option ? option.label : '未知状态'
+    },
+
+    /**
+     * 管理员状态对应样式类。
+     * @param {Number} status 状态码
+     * @returns {String}
+     */
+    adminStatusClass(status) {
+      return Number(status) === 1 ? 'normal' : 'disabled'
+    },
+
+    /**
+     * 管理员状态文案转换。
+     * @param {Number} status 状态码
+     * @returns {String}
+     */
+    adminStatusText(status) {
+      const option = ADMIN_STATUS_OPTIONS.find(item => item.value === Number(status))
+      return option ? option.label : '未知状态'
+    },
+
+    /**
+     * 判断时段是否已经达到开始时间。
+     * @param {String} dateText 日期字符串
+     * @param {String} startTime 开始时间 HH:mm
+     * @returns {Boolean}
+     */
+    isStartedTimeSlot(dateText, startTime) {
+      return dateText === this.formatDate(new Date()) && startTime <= this.currentTimeText()
+    },
+
+    /**
+     * 获取当前时间字符串。
+     * @returns {String}
+     */
+    currentTimeText() {
+      const now = new Date()
+      const hour = `${now.getHours()}`.padStart(2, '0')
+      const minute = `${now.getMinutes()}`.padStart(2, '0')
+      return `${hour}:${minute}`
     },
 
     /**

@@ -1,12 +1,9 @@
 package com.example.backend.service.impl;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +14,7 @@ import com.example.backend.dto.RegisterRequest;
 import com.example.backend.entity.User;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AuthService;
+import com.example.backend.service.support.UserAccountSupport;
 import com.example.backend.vo.LoginResponse;
 import com.example.backend.vo.LoginUserInfo;
 
@@ -26,11 +24,6 @@ import com.example.backend.vo.LoginUserInfo;
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
-
-    /**
-     * 中国大陆手机号格式。
-     */
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
 
     private final UserMapper userMapper;
 
@@ -60,7 +53,7 @@ public class AuthServiceImpl implements AuthService {
         user.setUsername(username);
         user.setNickname(username);
         user.setPhone(phone);
-        user.setPassword(encryptPassword(password));
+        user.setPassword(UserAccountSupport.encryptPassword(password));
         user.setRole(0);
         user.setStatus(1);
 
@@ -98,7 +91,7 @@ public class AuthServiceImpl implements AuthService {
             throw new IllegalArgumentException("用户名或密码错误");
         }
 
-        String encryptedPassword = encryptPassword(password);
+        String encryptedPassword = UserAccountSupport.encryptPassword(password);
         // 兼容历史数据：若数据库已有明文密码，也允许通过并在后续流程逐步迁移。
         boolean passwordMatched = Objects.equals(user.getPassword(), encryptedPassword)
                 || Objects.equals(user.getPassword(), password);
@@ -136,24 +129,9 @@ public class AuthServiceImpl implements AuthService {
      * @param password 密码
      */
     private void validateRegisterParams(String username, String phone, String password) {
-        if (username.isEmpty()) {
-            throw new IllegalArgumentException("用户名不能为空");
-        }
-        if (username.length() < 2 || username.length() > 20) {
-            throw new IllegalArgumentException("用户名长度需在2-20位之间");
-        }
-        if (phone.isEmpty()) {
-            throw new IllegalArgumentException("手机号不能为空");
-        }
-        if (!PHONE_PATTERN.matcher(phone).matches()) {
-            throw new IllegalArgumentException("手机号格式不正确");
-        }
-        if (password.isEmpty()) {
-            throw new IllegalArgumentException("密码不能为空");
-        }
-        if (password.length() < 6 || password.length() > 20) {
-            throw new IllegalArgumentException("密码长度需在6-20位之间");
-        }
+        UserAccountSupport.validateUsername(username);
+        UserAccountSupport.validatePhone(phone);
+        UserAccountSupport.validatePassword(password);
     }
 
     /**
@@ -184,31 +162,6 @@ public class AuthServiceImpl implements AuthService {
             return "admin";
         }
         throw new IllegalArgumentException("登录类型不合法");
-    }
-
-    /**
-     * 对密码进行 SHA-256 加密。
-     *
-     * @param rawPassword 原始密码
-     * @return 加密后的16进制字符串
-     */
-    private String encryptPassword(String rawPassword) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(rawPassword.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
-            // 将每个字节转为两位十六进制，确保长度固定为64位。
-            for (byte b : bytes) {
-                String hex = Integer.toHexString(b & 0xff);
-                if (hex.length() == 1) {
-                    builder.append('0');
-                }
-                builder.append(hex);
-            }
-            return builder.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("密码加密失败", e);
-        }
     }
 
     /**

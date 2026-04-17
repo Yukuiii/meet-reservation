@@ -4,6 +4,7 @@ import com.example.backend.common.ApiResponse;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminOperateRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
+import com.example.backend.dto.AdminSaveAdminRequest;
 import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.service.AdminService;
@@ -13,6 +14,7 @@ import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import com.example.backend.vo.AdminUserVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -53,6 +55,83 @@ public class AdminController {
             return ApiResponse.fail(e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail("查询待审核预约失败");
+        }
+    }
+
+    /**
+     * 查询管理员账号列表。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 管理员账号列表
+     */
+    @GetMapping("/admin-users")
+    public ApiResponse<List<AdminUserVO>> listAdmins(@RequestParam Long adminUserId) {
+        try {
+            return ApiResponse.success(adminService.listAdmins(adminUserId));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("查询管理员列表失败");
+        }
+    }
+
+    /**
+     * 新增管理员账号。
+     *
+     * @param request 保存参数
+     * @return 新管理员ID
+     */
+    @PostMapping("/admin-users")
+    public ApiResponse<Long> createAdmin(@RequestBody AdminSaveAdminRequest request) {
+        try {
+            return ApiResponse.success("新增管理员成功", adminService.createAdmin(request));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("新增管理员失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 编辑管理员账号。
+     *
+     * @param userId  管理员用户ID
+     * @param request 保存参数
+     * @return 统一响应
+     */
+    @PutMapping("/admin-users/{userId}")
+    public ApiResponse<Void> updateAdmin(@PathVariable Long userId,
+                                         @RequestBody AdminSaveAdminRequest request) {
+        try {
+            adminService.updateAdmin(userId, request);
+            return ApiResponse.success("编辑管理员成功", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("编辑管理员失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 删除管理员账号。
+     *
+     * @param userId  管理员用户ID
+     * @param request 管理员参数
+     * @return 统一响应
+     */
+    @PostMapping("/admin-users/{userId}/delete")
+    public ApiResponse<Void> deleteAdmin(@PathVariable Long userId,
+                                         @RequestBody AdminOperateRequest request) {
+        try {
+            if (request == null) {
+                return ApiResponse.fail("操作参数不能为空");
+            }
+            adminService.deleteAdmin(userId, request.getAdminUserId());
+            return ApiResponse.success("删除管理员成功", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("删除管理员失败，请稍后重试");
         }
     }
 

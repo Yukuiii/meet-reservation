@@ -2,6 +2,7 @@ package com.example.backend.service;
 
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
+import com.example.backend.dto.AdminSaveAdminRequest;
 import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
@@ -10,6 +11,7 @@ import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import com.example.backend.vo.AdminUserVO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -26,6 +28,38 @@ public interface AdminService {
      * @return 待审核预约列表
      */
     List<AdminReservationVO> listPendingReservations(Long adminUserId);
+
+    /**
+     * 查询管理员账号列表。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 管理员账号列表
+     */
+    List<AdminUserVO> listAdmins(Long adminUserId);
+
+    /**
+     * 新增管理员账号。
+     *
+     * @param request 保存参数
+     * @return 新管理员ID
+     */
+    Long createAdmin(AdminSaveAdminRequest request);
+
+    /**
+     * 编辑管理员账号。
+     *
+     * @param userId  管理员用户ID
+     * @param request 保存参数
+     */
+    void updateAdmin(Long userId, AdminSaveAdminRequest request);
+
+    /**
+     * 删除管理员账号。
+     *
+     * @param userId      管理员用户ID
+     * @param adminUserId 当前操作管理员ID
+     */
+    void deleteAdmin(Long userId, Long adminUserId);
 
     /**
      * 审核预约申请。

@@ -23,6 +23,13 @@
       >
         已取消
       </view>
+      <view
+        class="tab-item"
+        :class="{ active: currentTab === 'finished' }"
+        @click="switchTab('finished')"
+      >
+        已完成
+      </view>
     </view>
 
     <!-- 预约列表 -->
@@ -59,7 +66,7 @@
             <text class="value">{{ item.purpose }}</text>
           </view>
         </view>
-        <view class="card-footer" v-if="item.statusKey === 'pending' || item.statusKey === 'approved'">
+        <view class="card-footer" v-if="item.canCancel">
           <button
             class="cancel-btn"
             size="mini"
@@ -375,6 +382,11 @@ export default {
 .status.cancelled {
   background-color: #f5f5f5;
   color: #999;
+}
+
+.status.finished {
+  background-color: #e3f2fd;
+  color: #1976d2;
 }
 
 .card-body {

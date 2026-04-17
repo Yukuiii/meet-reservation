@@ -1,8 +1,10 @@
 package com.example.backend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
+import com.example.backend.dto.AdminSaveAdminRequest;
 import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.entity.Equipment;
@@ -16,12 +18,15 @@ import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AdminService;
+import com.example.backend.service.support.ReservationStatusManager;
+import com.example.backend.service.support.UserAccountSupport;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
 import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
 import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
+import com.example.backend.vo.AdminUserVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
@@ -110,6 +115,21 @@ public class AdminServiceImpl implements AdminService {
     private static final int EQUIPMENT_NORMAL = 1;
 
     /**
+     * 用户角色：管理员。
+     */
+    private static final int USER_ROLE_ADMIN = 1;
+
+    /**
+     * 用户状态：禁用。
+     */
+    private static final int USER_STATUS_DISABLED = 0;
+
+    /**
+     * 用户状态：正常。
+     */
+    private static final int USER_STATUS_NORMAL = 1;
+
+    /**
      * 默认冲突协调取消原因。
      */
     private static final String DEFAULT_EMERGENCY_CANCEL_REASON = "因管理员紧急占用，原预约已协调取消";
@@ -132,6 +152,7 @@ public class AdminServiceImpl implements AdminService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /**
      * 本地上传根目录。
@@ -144,6 +165,7 @@ public class AdminServiceImpl implements AdminService {
     private final MeetingRoomMapper meetingRoomMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
+    private final ReservationStatusManager reservationStatusManager;
 
     /**
      * 查询待审核预约列表。
@@ -153,6 +175,7 @@ public class AdminServiceImpl implements AdminService {
      */
     @Override
     public List<AdminReservationVO> listPendingReservations(Long adminUserId) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureAdminUser(adminUserId);
 
         List<Reservation> reservationList = reservationMapper.selectList(
@@ -171,10 +194,163 @@ public class AdminServiceImpl implements AdminService {
 
         List<AdminReservationVO> result = new ArrayList<>(reservationList.size());
         for (Reservation reservation : reservationList) {
-            result.add(toAdminReservationVO(reservation, userMap.get(reservation.getUserId()),
-                    roomMap.get(reservation.getRoomId())));
+            if (!reservationStatusManager.canReviewReservation(reservation)) {
+                continue;
+            }
+            result.add(toAdminReservationVO(
+                    reservation,
+                    userMap.get(reservation.getUserId()),
+                    roomMap.get(reservation.getRoomId())
+            ));
         }
         return result;
+    }
+
+    /**
+     * 查询管理员账号列表。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 管理员账号列表
+     */
+    @Override
+    public List<AdminUserVO> listAdmins(Long adminUserId) {
+        ensureAdminUser(adminUserId);
+
+        List<User> adminList = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRole, USER_ROLE_ADMIN)
+                        .orderByDesc(User::getCreatedAt)
+                        .orderByDesc(User::getId)
+        );
+        if (adminList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return adminList.stream().map(this::toAdminUserVO).toList();
+    }
+
+    /**
+     * 新增管理员账号。
+     *
+     * @param request 保存参数
+     * @return 新管理员ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAdmin(AdminSaveAdminRequest request) {
+        validateSaveAdminRequest(request, true);
+        ensureAdminUser(request.getAdminUserId());
+
+        String finalUsername = cleanText(request.getUsername());
+        ensureUsernameUnique(finalUsername, null);
+
+        User entity = new User();
+        fillAdminEntity(entity, request, true);
+        entity.setRole(USER_ROLE_ADMIN);
+        entity.setCreatedAt(LocalDateTime.now());
+        entity.setUpdatedAt(LocalDateTime.now());
+
+        int rows;
+        try {
+            rows = userMapper.insert(entity);
+        } catch (DuplicateKeyException exception) {
+            throw new IllegalArgumentException("用户名已存在");
+        }
+        if (rows != 1 || entity.getId() == null) {
+            throw new IllegalStateException("新增管理员失败，请稍后重试");
+        }
+        return entity.getId();
+    }
+
+    /**
+     * 编辑管理员账号。
+     *
+     * @param userId  管理员用户ID
+     * @param request 保存参数
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAdmin(Long userId, AdminSaveAdminRequest request) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("管理员ID不合法");
+        }
+
+        validateSaveAdminRequest(request, false);
+        User operator = ensureAdminUser(request.getAdminUserId());
+        User targetAdmin = userMapper.selectById(userId);
+        if (targetAdmin == null || !Objects.equals(targetAdmin.getRole(), USER_ROLE_ADMIN)) {
+            throw new IllegalArgumentException("管理员不存在");
+        }
+
+        Integer nextStatus = normalizeUserStatus(request.getStatus());
+        if (Objects.equals(operator.getId(), userId) && !Objects.equals(nextStatus, USER_STATUS_NORMAL)) {
+            throw new IllegalArgumentException("不能禁用当前登录管理员");
+        }
+        if (Objects.equals(targetAdmin.getStatus(), USER_STATUS_NORMAL)
+                && !Objects.equals(nextStatus, USER_STATUS_NORMAL)
+                && countNormalAdmins() <= 1) {
+            throw new IllegalArgumentException("系统至少需要保留一个正常管理员");
+        }
+
+        String finalUsername = cleanText(request.getUsername());
+        ensureUsernameUnique(finalUsername, userId);
+
+        String finalNickname = cleanText(request.getNickname());
+        String finalPassword = cleanText(request.getPassword());
+
+        LambdaUpdateWrapper<User> updateWrapper = new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .eq(User::getRole, USER_ROLE_ADMIN)
+                .set(User::getUsername, finalUsername)
+                .set(User::getNickname, StringUtils.hasText(finalNickname) ? finalNickname : finalUsername)
+                .set(User::getPhone, cleanText(request.getPhone()))
+                .set(User::getEmail, optionalText(request.getEmail()))
+                .set(User::getRole, USER_ROLE_ADMIN)
+                .set(User::getStatus, nextStatus)
+                .set(User::getUpdatedAt, LocalDateTime.now());
+        if (StringUtils.hasText(finalPassword)) {
+            updateWrapper.set(User::getPassword, UserAccountSupport.encryptPassword(finalPassword));
+        }
+
+        int rows = userMapper.update(null, updateWrapper);
+        if (rows != 1) {
+            throw new IllegalStateException("编辑管理员失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 删除管理员账号。
+     *
+     * @param userId      管理员用户ID
+     * @param adminUserId 当前操作管理员ID
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteAdmin(Long userId, Long adminUserId) {
+        User operator = ensureAdminUser(adminUserId);
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("管理员ID不合法");
+        }
+        if (Objects.equals(operator.getId(), userId)) {
+            throw new IllegalArgumentException("不能删除当前登录管理员");
+        }
+
+        User targetAdmin = userMapper.selectById(userId);
+        if (targetAdmin == null || !Objects.equals(targetAdmin.getRole(), USER_ROLE_ADMIN)) {
+            throw new IllegalArgumentException("管理员不存在");
+        }
+        if (Objects.equals(targetAdmin.getStatus(), USER_STATUS_NORMAL) && countNormalAdmins() <= 1) {
+            throw new IllegalArgumentException("系统至少需要保留一个正常管理员");
+        }
+
+        int rows = userMapper.delete(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getId, userId)
+                        .eq(User::getRole, USER_ROLE_ADMIN)
+        );
+        if (rows != 1) {
+            throw new IllegalStateException("删除管理员失败，请稍后重试");
+        }
     }
 
     /**
@@ -185,6 +361,7 @@ public class AdminServiceImpl implements AdminService {
      */
     @Override
     public void reviewReservation(Long reservationId, AdminReviewReservationRequest request) {
+        reservationStatusManager.refreshExpiredReservations();
         if (request == null) {
             throw new IllegalArgumentException("审核参数不能为空");
         }
@@ -199,6 +376,9 @@ public class AdminServiceImpl implements AdminService {
         Reservation reservation = reservationMapper.selectById(reservationId);
         if (reservation == null) {
             throw new IllegalArgumentException("预约记录不存在");
+        }
+        if (reservationStatusManager.isReservationEnded(reservation)) {
+            throw new IllegalArgumentException("预约时段已结束，无法继续审核");
         }
         if (!Integer.valueOf(RESERVATION_PENDING).equals(reservation.getStatus())) {
             throw new IllegalArgumentException("预约已处理，请刷新后重试");
@@ -577,6 +757,7 @@ public class AdminServiceImpl implements AdminService {
      */
     @Override
     public AdminStatsVO getStats(Long adminUserId) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureAdminUser(adminUserId);
 
         AdminStatsVO stats = new AdminStatsVO();
@@ -620,6 +801,7 @@ public class AdminServiceImpl implements AdminService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AdminEmergencyOccupyVO emergencyOccupy(AdminEmergencyOccupyRequest request) {
+        reservationStatusManager.refreshExpiredReservations();
         validateEmergencyOccupyRequest(request);
         User admin = ensureAdminUser(request.getAdminUserId());
 
@@ -711,13 +893,101 @@ public class AdminServiceImpl implements AdminService {
         if (user == null) {
             throw new IllegalArgumentException("管理员不存在，请重新登录");
         }
-        if (!Objects.equals(user.getStatus(), 1)) {
+        if (!Objects.equals(user.getStatus(), USER_STATUS_NORMAL)) {
             throw new IllegalArgumentException("管理员账号已被禁用");
         }
-        if (!Objects.equals(user.getRole(), 1)) {
+        if (!Objects.equals(user.getRole(), USER_ROLE_ADMIN)) {
             throw new IllegalArgumentException("当前用户无管理员权限");
         }
         return user;
+    }
+
+    /**
+     * 校验管理员保存参数。
+     *
+     * @param request         保存参数
+     * @param requirePassword 是否必须填写密码
+     */
+    private void validateSaveAdminRequest(AdminSaveAdminRequest request, boolean requirePassword) {
+        if (request == null) {
+            throw new IllegalArgumentException("管理员参数不能为空");
+        }
+
+        String finalUsername = cleanText(request.getUsername());
+        String finalNickname = cleanText(request.getNickname());
+        String finalPhone = cleanText(request.getPhone());
+        String finalEmail = cleanText(request.getEmail());
+        String finalPassword = cleanText(request.getPassword());
+
+        UserAccountSupport.validateUsername(finalUsername);
+        UserAccountSupport.validatePhone(finalPhone);
+
+        if (requirePassword || StringUtils.hasText(finalPassword)) {
+            UserAccountSupport.validatePassword(finalPassword);
+        }
+        if (finalNickname.length() > 64) {
+            throw new IllegalArgumentException("昵称长度不能超过64个字符");
+        }
+        if (finalEmail.length() > 128) {
+            throw new IllegalArgumentException("邮箱长度不能超过128个字符");
+        }
+        normalizeUserStatus(request.getStatus());
+    }
+
+    /**
+     * 将请求参数写入管理员实体。
+     *
+     * @param entity          用户实体
+     * @param request         保存参数
+     * @param createWithPassword 是否为创建流程
+     */
+    private void fillAdminEntity(User entity, AdminSaveAdminRequest request, boolean createWithPassword) {
+        String finalUsername = cleanText(request.getUsername());
+        String finalNickname = cleanText(request.getNickname());
+        String finalPassword = cleanText(request.getPassword());
+
+        entity.setUsername(finalUsername);
+        entity.setNickname(StringUtils.hasText(finalNickname) ? finalNickname : finalUsername);
+        entity.setPhone(cleanText(request.getPhone()));
+        entity.setEmail(optionalText(request.getEmail()));
+        entity.setStatus(normalizeUserStatus(request.getStatus()));
+
+        if (createWithPassword || StringUtils.hasText(finalPassword)) {
+            entity.setPassword(UserAccountSupport.encryptPassword(finalPassword));
+        }
+    }
+
+    /**
+     * 校验用户名唯一性。
+     *
+     * @param username      用户名
+     * @param excludeUserId 排除的用户ID
+     */
+    private void ensureUsernameUnique(String username, Long excludeUserId) {
+        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<User>()
+                .eq(User::getUsername, username);
+        if (excludeUserId != null) {
+            queryWrapper.ne(User::getId, excludeUserId);
+        }
+
+        User exists = userMapper.selectOne(queryWrapper.last("limit 1"));
+        if (exists != null) {
+            throw new IllegalArgumentException("用户名已存在");
+        }
+    }
+
+    /**
+     * 统计正常管理员数量。
+     *
+     * @return 正常管理员数量
+     */
+    private long countNormalAdmins() {
+        Long count = userMapper.selectCount(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRole, USER_ROLE_ADMIN)
+                        .eq(User::getStatus, USER_STATUS_NORMAL)
+        );
+        return count == null ? 0L : count;
     }
 
     /**
@@ -1003,6 +1273,26 @@ public class AdminServiceImpl implements AdminService {
         item.setStatus(reservation.getStatus());
         item.setStatusKey(mapReservationStatusKey(reservation.getStatus()));
         item.setStatusText(mapReservationStatusText(reservation.getStatus()));
+        item.setCanReview(reservationStatusManager.canReviewReservation(reservation));
+        return item;
+    }
+
+    /**
+     * 用户实体转换为管理员账号视图对象。
+     *
+     * @param user 用户实体
+     * @return 管理员账号视图对象
+     */
+    private AdminUserVO toAdminUserVO(User user) {
+        AdminUserVO item = new AdminUserVO();
+        item.setId(user.getId());
+        item.setUsername(user.getUsername());
+        item.setNickname(user.getNickname());
+        item.setPhone(user.getPhone());
+        item.setEmail(user.getEmail());
+        item.setStatus(user.getStatus());
+        item.setStatusText(mapUserStatusText(user.getStatus()));
+        item.setCreatedAt(formatDateTime(user.getCreatedAt()));
         return item;
     }
 
@@ -1029,6 +1319,9 @@ public class AdminServiceImpl implements AdminService {
         }
         if (!request.getStartTime().isBefore(request.getEndTime())) {
             throw new IllegalArgumentException("开始时间必须早于结束时间");
+        }
+        if (reservationStatusManager.hasReservationStarted(request.getReservationDate(), request.getStartTime())) {
+            throw new IllegalArgumentException("今天已开始的时段不可紧急占用");
         }
         if (!StringUtils.hasText(cleanText(request.getTitle()))) {
             throw new IllegalArgumentException("占用主题不能为空");
@@ -1114,6 +1407,23 @@ public class AdminServiceImpl implements AdminService {
     }
 
     /**
+     * 状态码转换为用户状态文案。
+     *
+     * @param status 状态码
+     * @return 状态文案
+     */
+    private String mapUserStatusText(Integer status) {
+        if (status == null) {
+            return "未知状态";
+        }
+        return switch (status) {
+            case USER_STATUS_DISABLED -> "禁用";
+            case USER_STATUS_NORMAL -> "正常";
+            default -> "未知状态";
+        };
+    }
+
+    /**
      * 时间格式化为 HH:mm。
      *
      * @param time 时间
@@ -1137,6 +1447,19 @@ public class AdminServiceImpl implements AdminService {
             return "";
         }
         return DATE_FORMATTER.format(date);
+    }
+
+    /**
+     * 日期时间格式化为 yyyy-MM-dd HH:mm。
+     *
+     * @param dateTime 日期时间
+     * @return 格式化字符串
+     */
+    private String formatDateTime(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return "";
+        }
+        return DATE_TIME_FORMATTER.format(dateTime);
     }
 
     /**
@@ -1169,6 +1492,22 @@ public class AdminServiceImpl implements AdminService {
         }
         if (!Objects.equals(status, EQUIPMENT_DISABLED) && !Objects.equals(status, EQUIPMENT_NORMAL)) {
             throw new IllegalArgumentException("设备状态不合法");
+        }
+        return status;
+    }
+
+    /**
+     * 标准化用户状态。
+     *
+     * @param status 原始状态
+     * @return 状态码
+     */
+    private Integer normalizeUserStatus(Integer status) {
+        if (status == null) {
+            return USER_STATUS_NORMAL;
+        }
+        if (!Objects.equals(status, USER_STATUS_DISABLED) && !Objects.equals(status, USER_STATUS_NORMAL)) {
+            throw new IllegalArgumentException("管理员状态不合法");
         }
         return status;
     }

@@ -92,4 +92,9 @@ public class AdminReservationVO {
      * 状态文案。
      */
     private String statusText;
+
+    /**
+     * 是否允许审核。
+     */
+    private Boolean canReview;
 }

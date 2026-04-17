@@ -9,6 +9,7 @@ import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.ReservationService;
+import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.vo.ReservationCalendarDayVO;
 import com.example.backend.vo.ReservationCalendarItemVO;
 import com.example.backend.vo.ReservationCalendarVO;
@@ -82,6 +83,7 @@ public class ReservationServiceImpl implements ReservationService {
     private final ReservationMapper reservationMapper;
     private final MeetingRoomMapper meetingRoomMapper;
     private final UserMapper userMapper;
+    private final ReservationStatusManager reservationStatusManager;
 
     /**
      * 查询会议室指定日期的占用时段。
@@ -92,6 +94,7 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public List<ReservationScheduleItemVO> listRoomSchedule(Long roomId, LocalDate reservationDate) {
+        reservationStatusManager.refreshExpiredReservations();
         validateRoomIdAndDate(roomId, reservationDate);
         ensureRoomCanReserve(roomId);
 
@@ -118,6 +121,7 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public ReservationCalendarVO getCalendar(Long userId, String viewType, LocalDate targetDate) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureUserCanReserve(userId);
 
         String finalViewType = normalizeViewType(viewType);
@@ -128,7 +132,7 @@ public class ReservationServiceImpl implements ReservationService {
         List<Reservation> reservationList = reservationMapper.selectList(
                 new LambdaQueryWrapper<Reservation>()
                         .between(Reservation::getReservationDate, startDate, endDate)
-                        .in(Reservation::getStatus, STATUS_PENDING, STATUS_APPROVED)
+                        .in(Reservation::getStatus, STATUS_PENDING, STATUS_APPROVED, STATUS_FINISHED)
                         .orderByAsc(Reservation::getReservationDate)
                         .orderByAsc(Reservation::getStartTime)
                         .orderByAsc(Reservation::getEndTime)
@@ -177,6 +181,7 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public CreateReservationResponseVO createReservation(CreateReservationRequest request) {
+        reservationStatusManager.refreshExpiredReservations();
         if (request == null) {
             throw new IllegalArgumentException("预约参数不能为空");
         }
@@ -228,12 +233,13 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public List<UserReservationVO> listUserReservations(Long userId) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureUserCanReserve(userId);
 
         List<Reservation> reservationList = reservationMapper.selectList(
                 new LambdaQueryWrapper<Reservation>()
                         .eq(Reservation::getUserId, userId)
-                        .in(Reservation::getStatus, STATUS_PENDING, STATUS_APPROVED, STATUS_CANCELLED)
+                        .in(Reservation::getStatus, STATUS_PENDING, STATUS_APPROVED, STATUS_CANCELLED, STATUS_FINISHED)
                         .orderByDesc(Reservation::getReservationDate)
                         .orderByDesc(Reservation::getStartTime)
                         .orderByDesc(Reservation::getId)
@@ -257,6 +263,7 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public UserReservationVO getReservationDetail(Long userId, Long reservationId) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureUserCanReserve(userId);
         if (reservationId == null || reservationId <= 0) {
             throw new IllegalArgumentException("预约ID不合法");
@@ -286,6 +293,7 @@ public class ReservationServiceImpl implements ReservationService {
      */
     @Override
     public void cancelReservation(Long userId, Long reservationId, String cancelReason) {
+        reservationStatusManager.refreshExpiredReservations();
         ensureUserCanReserve(userId);
         if (reservationId == null || reservationId <= 0) {
             throw new IllegalArgumentException("预约ID不合法");
@@ -299,6 +307,9 @@ public class ReservationServiceImpl implements ReservationService {
         );
         if (reservation == null) {
             throw new IllegalArgumentException("预约记录不存在");
+        }
+        if (reservationStatusManager.isReservationEnded(reservation)) {
+            throw new IllegalArgumentException("预约时段已结束，无法取消");
         }
         if (!Integer.valueOf(STATUS_PENDING).equals(reservation.getStatus())
                 && !Integer.valueOf(STATUS_APPROVED).equals(reservation.getStatus())) {
@@ -357,6 +368,9 @@ public class ReservationServiceImpl implements ReservationService {
         }
         if (!request.getStartTime().isBefore(request.getEndTime())) {
             throw new IllegalArgumentException("开始时间必须早于结束时间");
+        }
+        if (reservationStatusManager.hasReservationStarted(request.getReservationDate(), request.getStartTime())) {
+            throw new IllegalArgumentException("今天已开始的时段不可预约");
         }
 
         if (!StringUtils.hasText(request.getTitle())) {
@@ -631,6 +645,7 @@ public class ReservationServiceImpl implements ReservationService {
         item.setCancelReason(reservation.getCancelReason());
         item.setRejectReason(reservation.getRejectReason());
         item.setRemark(reservation.getRemark());
+        item.setCanCancel(reservationStatusManager.canCancelReservation(reservation));
         return item;
     }
 

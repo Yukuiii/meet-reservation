@@ -92,4 +92,9 @@ public class UserReservationVO {
      * 备注。
      */
     private String remark;
+
+    /**
+     * 是否允许取消。
+     */
+    private Boolean canCancel;
 }
