@@ -613,23 +613,19 @@ function formatDate(date) {
 }
 
 .time-slots {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20rpx 24rpx;
 }
 
 .time-slot {
-  width: calc(33.33% - 16rpx);
-  margin-right: 24rpx;
-  margin-bottom: 20rpx;
+  width: 100%;
+  min-width: 0;
   padding: 20rpx 0;
   text-align: center;
   background-color: #f5f5f5;
   border-radius: 12rpx;
   border: 2rpx solid transparent;
-}
-
-.time-slot:nth-child(3n) {
-  margin-right: 0;
 }
 
 .time-slot.booked,
