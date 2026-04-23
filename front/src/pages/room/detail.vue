@@ -56,11 +56,11 @@
           class="time-slot"
           v-for="(slot, index) in timeSlots"
           :key="index"
-          :class="{ booked: slot.booked, selected: slot.selected }"
+          :class="{ booked: slot.booked, expired: slot.expired, selected: slot.selected }"
           @click="selectTimeSlot(index)"
         >
           <text class="slot-time">{{ slot.time }}</text>
-          <text class="slot-status">{{ slot.booked ? '已占用' : '可预约' }}</text>
+          <text class="slot-status">{{ getSlotStatusText(slot) }}</text>
         </view>
       </view>
     </view>
@@ -227,10 +227,11 @@ function createDefaultTimeSlots() {
   return templates.map(item => ({
     start: item[0],
     end: item[1],
-    time: `${item[0]}-${item[1]}`,
-    booked: false,
-    selected: false
-  }))
+      time: `${item[0]}-${item[1]}`,
+      booked: false,
+      expired: false,
+      selected: false
+    }))
 }
 
 /**
@@ -291,6 +292,7 @@ function syncSlotBookedState(scheduleList) {
     slot.booked = scheduleList.some(item =>
       isTimeOverlap(slot.start, slot.end, item.startTime, item.endTime)
     )
+    slot.expired = isStartedTimeSlot(selectedDate.value, slot.start)
   })
 
   timeSlots.value = nextSlots
@@ -329,7 +331,7 @@ function selectTimeSlot(index) {
     uni.showToast({ title: '该时段已被占用', icon: 'none' })
     return
   }
-  if (isStartedTimeSlot(selectedDate.value, slot.start)) {
+  if (slot.expired) {
     uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
     return
   }
@@ -443,6 +445,21 @@ function isSelectedSlotsContinuous() {
  */
 function isStartedTimeSlot(dateText, startTime) {
   return dateText === formatDate(new Date()) && startTime <= currentTimeText()
+}
+
+/**
+ * 获取时间段状态文案。
+ * @param {Object} slot 时间段
+ * @returns {String}
+ */
+function getSlotStatusText(slot) {
+  if (slot.booked) {
+    return '已占用'
+  }
+  if (slot.expired) {
+    return '不可预约'
+  }
+  return '可预约'
 }
 
 /**
@@ -615,7 +632,8 @@ function formatDate(date) {
   margin-right: 0;
 }
 
-.time-slot.booked {
+.time-slot.booked,
+.time-slot.expired {
   background-color: #ffebee;
   color: #999;
 }
@@ -632,7 +650,8 @@ function formatDate(date) {
   margin-bottom: 8rpx;
 }
 
-.time-slot.booked .slot-time {
+.time-slot.booked .slot-time,
+.time-slot.expired .slot-time {
   color: #999;
 }
 
@@ -642,7 +661,8 @@ function formatDate(date) {
   color: #4caf50;
 }
 
-.time-slot.booked .slot-status {
+.time-slot.booked .slot-status,
+.time-slot.expired .slot-status {
   color: #f44336;
 }
 
