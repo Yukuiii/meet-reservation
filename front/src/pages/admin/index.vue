@@ -1788,7 +1788,10 @@ const page = reactive({
         uni.showModal({
           title: '提交成功',
           content: lines.join('\n'),
-          showCancel: false
+          showCancel: false,
+          success: () => {
+            page.goToCalendar()
+          }
         })
         await Promise.all([page.loadPendingReservations(), page.loadStats()])
       } catch (error) {
