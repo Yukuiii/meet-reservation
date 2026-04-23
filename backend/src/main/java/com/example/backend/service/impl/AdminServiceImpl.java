@@ -1,5 +1,34 @@
 package com.example.backend.service.impl;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
@@ -27,35 +56,8 @@ import com.example.backend.vo.AdminMeetingRoomVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminStatsVO;
 import com.example.backend.vo.AdminUserVO;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 /**
  * 管理员业务实现。
@@ -815,7 +817,6 @@ public class AdminServiceImpl implements AdminService {
                         .eq(Reservation::getRoomId, request.getRoomId())
                         .eq(Reservation::getReservationDate, request.getReservationDate())
                         .in(Reservation::getStatus, RESERVATION_PENDING, RESERVATION_APPROVED)
-                        // 新时段开始时间 < 已有时段结束时间 且 新时段结束时间 > 已有时段开始时间，说明存在重叠冲突。
                         .lt(Reservation::getStartTime, request.getEndTime())
                         .gt(Reservation::getEndTime, request.getStartTime())
                         .orderByAsc(Reservation::getStartTime)
