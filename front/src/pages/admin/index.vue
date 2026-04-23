@@ -56,6 +56,34 @@
 
     <scroll-view class="content" scroll-y>
       <view class="panel" v-if="activeTab === 'review'">
+        <view class="review-toolbar" v-if="!reviewLoading && pendingReservations.length > 0">
+          <view class="review-toolbar-info">
+            <text class="review-toolbar-title">已选 {{ selectedReservationCount }} / {{ pendingReservations.length }}</text>
+            <text class="review-toolbar-tip">自动审核会通过可预约申请，并驳回冲突或不可预约申请</text>
+          </view>
+          <view class="review-toolbar-actions">
+            <button class="toolbar-btn" :disabled="reviewActionBusy" @click="toggleAllReviewSelection">
+              {{ allReviewReservationsSelected ? '清空选择' : '全选' }}
+            </button>
+            <button class="toolbar-btn approve" :disabled="reviewActionBusy" @click="handleBatchReview(true)">
+              批量通过
+            </button>
+            <button class="toolbar-btn reject" :disabled="reviewActionBusy" @click="handleBatchReview(false)">
+              批量驳回
+            </button>
+            <button class="toolbar-btn auto" :disabled="reviewActionBusy" @click="handleAutoReview">
+              自动审核
+            </button>
+          </view>
+          <input
+            class="batch-reject-input"
+            type="text"
+            v-model="batchRejectReason"
+            placeholder="批量驳回原因"
+            placeholder-class="placeholder"
+          />
+        </view>
+
         <view class="loading-state" v-if="reviewLoading">
           <text>待审核预约加载中...</text>
         </view>
@@ -67,7 +95,16 @@
             :key="item.id"
           >
             <view class="card-header">
-              <text class="card-title">{{ item.title || '未命名会议' }}</text>
+              <view class="review-title-row">
+                <view
+                  class="select-box"
+                  :class="{ checked: isReservationSelected(item.id) }"
+                  @click.stop="toggleReservationSelection(item)"
+                >
+                  <text v-if="isReservationSelected(item.id)">✓</text>
+                </view>
+                <text class="card-title">{{ item.title || '未命名会议' }}</text>
+              </view>
               <text class="status-tag pending">待审核</text>
             </view>
             <view class="card-line">预约编号：{{ item.reservationNo }}</view>
@@ -88,14 +125,14 @@
             <view class="card-actions" v-if="item.canReview">
               <button
                 class="mini-btn reject"
-                :disabled="reviewingId === item.id"
+                :disabled="reviewingId === item.id || reviewActionBusy"
                 @click="handleReview(item, false)"
               >
                 驳回
               </button>
               <button
                 class="mini-btn approve"
-                :disabled="reviewingId === item.id"
+                :disabled="reviewingId === item.id || reviewActionBusy"
                 @click="handleReview(item, true)"
               >
                 通过
@@ -806,6 +843,10 @@ const page = reactive({
   // 审核模块
   reviewLoading: false,
   reviewingId: null,
+  selectedReservationIds: [],
+  batchReviewing: false,
+  autoReviewing: false,
+  batchRejectReason: '管理员批量驳回',
   pendingReservations: [],
   // 会议室模块
   roomLoading: false,
@@ -897,6 +938,42 @@ const page = reactive({
   get adminStatusIndex() {
       const index = ADMIN_STATUS_OPTIONS.findIndex(item => item.value === Number(page.adminForm.status))
       return index >= 0 ? index : 0
+  },
+
+  /**
+   * 已选择待审核预约数量。
+   * @returns {Number}
+   */
+  get selectedReservationCount() {
+      return page.selectedReservationIds.length
+  },
+
+  /**
+   * 可审核预约ID列表。
+   * @returns {Array}
+   */
+  get reviewableReservationIds() {
+      return page.pendingReservations
+        .filter(item => item.canReview)
+        .map(item => item.id)
+  },
+
+  /**
+   * 是否已选择全部可审核预约。
+   * @returns {Boolean}
+   */
+  get allReviewReservationsSelected() {
+      const reviewableIds = page.reviewableReservationIds
+      return reviewableIds.length > 0
+        && reviewableIds.every(id => page.selectedReservationIds.includes(id))
+  },
+
+  /**
+   * 审核操作是否忙碌。
+   * @returns {Boolean}
+   */
+  get reviewActionBusy() {
+      return !!page.reviewingId || page.batchReviewing || page.autoReviewing
   },
 
   /**
@@ -1029,11 +1106,168 @@ const page = reactive({
           ...item,
           rejectReasonDraft: ''
         }))
+        const availableIds = new Set(page.pendingReservations.map(item => item.id))
+        page.selectedReservationIds = page.selectedReservationIds.filter(id => availableIds.has(id))
       } catch (error) {
         uni.showToast({ title: error.message || '加载待审核预约失败', icon: 'none' })
       } finally {
         page.reviewLoading = false
       }
+    },
+
+    /**
+     * 判断预约是否已被选择。
+     * @param {Number} reservationId 预约ID
+     * @returns {Boolean}
+     */
+    isReservationSelected(reservationId) {
+      return page.selectedReservationIds.includes(reservationId)
+    },
+
+    /**
+     * 切换预约选择状态。
+     * @param {Object} item 预约项
+     */
+    toggleReservationSelection(item) {
+      if (!item || !item.canReview || page.reviewActionBusy) {
+        return
+      }
+      if (page.isReservationSelected(item.id)) {
+        page.selectedReservationIds = page.selectedReservationIds.filter(id => id !== item.id)
+        return
+      }
+      page.selectedReservationIds = [...page.selectedReservationIds, item.id]
+    },
+
+    /**
+     * 切换全选当前可审核预约。
+     */
+    toggleAllReviewSelection() {
+      if (page.reviewActionBusy) {
+        return
+      }
+      if (page.allReviewReservationsSelected) {
+        page.selectedReservationIds = []
+        return
+      }
+      page.selectedReservationIds = [...page.reviewableReservationIds]
+    },
+
+    /**
+     * 批量审核选中的预约。
+     * @param {Boolean} approved 是否通过
+     */
+    handleBatchReview(approved) {
+      if (page.selectedReservationIds.length === 0) {
+        uni.showToast({ title: '请先选择预约', icon: 'none' })
+        return
+      }
+      const actionText = approved ? '通过' : '驳回'
+      const rejectReason = (page.batchRejectReason || '').trim() || '管理员批量驳回'
+
+      uni.showModal({
+        title: '确认批量审核',
+        content: `确定批量${actionText}${page.selectedReservationIds.length}条预约申请吗？`,
+        success: async (res) => {
+          if (!res.confirm || page.reviewActionBusy) {
+            return
+          }
+
+          page.batchReviewing = true
+          try {
+            const result = await request({
+              url: '/api/admin/reservations/review/batch',
+              method: 'POST',
+              data: {
+                adminUserId: page.adminUserId,
+                reservationIds: page.selectedReservationIds,
+                approved,
+                rejectReason
+              }
+            })
+            page.showBatchReviewResult('批量审核结果', result)
+            await Promise.all([page.loadPendingReservations(), page.loadStats()])
+          } catch (error) {
+            uni.showToast({ title: error.message || '批量审核失败', icon: 'none' })
+          } finally {
+            page.batchReviewing = false
+          }
+        }
+      })
+    },
+
+    /**
+     * 自动审核当前待审核预约。
+     */
+    handleAutoReview() {
+      if (page.pendingReservations.length === 0) {
+        uni.showToast({ title: '暂无待审核预约', icon: 'none' })
+        return
+      }
+
+      uni.showModal({
+        title: '确认自动审核',
+        content: '系统将通过可预约申请，并驳回已开始、冲突或会议室不可用的申请。',
+        success: async (res) => {
+          if (!res.confirm || page.reviewActionBusy) {
+            return
+          }
+
+          page.autoReviewing = true
+          try {
+            const result = await request({
+              url: '/api/admin/reservations/review/auto',
+              method: 'POST',
+              data: {
+                adminUserId: page.adminUserId
+              }
+            })
+            page.showBatchReviewResult('自动审核结果', result)
+            await Promise.all([page.loadPendingReservations(), page.loadStats()])
+          } catch (error) {
+            uni.showToast({ title: error.message || '自动审核失败', icon: 'none' })
+          } finally {
+            page.autoReviewing = false
+          }
+        }
+      })
+    },
+
+    /**
+     * 展示批量审核结果。
+     * @param {String} title 弹窗标题
+     * @param {Object} result 批量结果
+     */
+    showBatchReviewResult(title, result) {
+      uni.showModal({
+        title,
+        content: page.formatBatchReviewResult(result || {}),
+        showCancel: false
+      })
+    },
+
+    /**
+     * 格式化批量审核结果。
+     * @param {Object} result 批量结果
+     * @returns {String}
+     */
+    formatBatchReviewResult(result) {
+      const failureMessages = Array.isArray(result.failureMessages) ? result.failureMessages : []
+      const lines = [
+        `处理总数：${result.totalCount || 0}条`,
+        `成功：${result.successCount || 0}条`,
+        `通过：${result.approvedCount || 0}条`,
+        `驳回：${result.rejectedCount || 0}条`,
+        `失败：${result.failedCount || 0}条`
+      ]
+      if (failureMessages.length > 0) {
+        lines.push('失败明细：')
+        lines.push(...failureMessages.slice(0, 3))
+        if (failureMessages.length > 3) {
+          lines.push(`其余${failureMessages.length - 3}条请刷新后重试`)
+        }
+      }
+      return lines.join('\n')
     },
 
     /**
@@ -1938,6 +2172,10 @@ const {
   adminUserId,
   reviewLoading,
   reviewingId,
+  selectedReservationIds,
+  batchReviewing,
+  autoReviewing,
+  batchRejectReason,
   pendingReservations,
   roomLoading,
   roomList,
@@ -1967,6 +2205,10 @@ const {
   equipmentStatusIndex,
   adminStatusLabels,
   adminStatusIndex,
+  selectedReservationCount,
+  reviewableReservationIds,
+  allReviewReservationsSelected,
+  reviewActionBusy,
   emergencyRoomOptions,
   emergencyRoomIndex,
   emergencyRoomLabel,
@@ -1976,6 +2218,13 @@ const {
   switchTab,
   refreshCurrentTab,
   loadPendingReservations,
+  isReservationSelected,
+  toggleReservationSelection,
+  toggleAllReviewSelection,
+  handleBatchReview,
+  handleAutoReview,
+  showBatchReviewResult,
+  formatBatchReviewResult,
   handleReview,
   loadMeetingRooms,
   loadEquipmentList,
@@ -2095,6 +2344,80 @@ const {
   margin-bottom: 20rpx;
 }
 
+.review-toolbar {
+  background-color: #fff;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  margin-bottom: 18rpx;
+}
+
+.review-toolbar-info {
+  margin-bottom: 16rpx;
+}
+
+.review-toolbar-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 6rpx;
+}
+
+.review-toolbar-tip {
+  display: block;
+  font-size: 23rpx;
+  color: #888;
+  line-height: 32rpx;
+}
+
+.review-toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-bottom: 14rpx;
+}
+
+.toolbar-btn {
+  margin: 0;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 10rpx;
+  background-color: #f3f4f6;
+  color: #333;
+  font-size: 24rpx;
+}
+
+.toolbar-btn::after {
+  border: none;
+}
+
+.toolbar-btn.approve,
+.toolbar-btn.auto {
+  background-color: #007aff;
+  color: #fff;
+}
+
+.toolbar-btn.reject {
+  background-color: #ef5350;
+  color: #fff;
+}
+
+.toolbar-btn[disabled] {
+  opacity: 0.7;
+}
+
+.batch-reject-input {
+  width: 100%;
+  height: 66rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+  background-color: #fff;
+  font-size: 25rpx;
+  color: #333;
+}
+
 .action-btn {
   height: 80rpx;
   line-height: 80rpx;
@@ -2127,11 +2450,38 @@ const {
   margin-bottom: 12rpx;
 }
 
+.review-title-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.select-box {
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid #c8d0dc;
+  margin-right: 12rpx;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.select-box.checked {
+  background-color: #007aff;
+  border-color: #007aff;
+}
+
 .card-title {
   font-size: 30rpx;
   font-weight: bold;
   color: #333;
   max-width: 520rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-line {

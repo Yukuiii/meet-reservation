@@ -1,6 +1,7 @@
 package com.example.backend.controller;
 
 import com.example.backend.common.ApiResponse;
+import com.example.backend.dto.AdminBatchReviewReservationRequest;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminOperateRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
@@ -8,6 +9,7 @@ import com.example.backend.dto.AdminSaveAdminRequest;
 import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.service.AdminService;
+import com.example.backend.vo.AdminBatchReviewResultVO;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
 import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
@@ -152,6 +154,48 @@ public class AdminController {
             return ApiResponse.fail(e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail("审核预约失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 批量审核预约。
+     *
+     * @param request 批量审核参数
+     * @return 批量审核结果
+     */
+    @PostMapping("/reservations/review/batch")
+    public ApiResponse<AdminBatchReviewResultVO> batchReviewReservations(
+            @RequestBody AdminBatchReviewReservationRequest request) {
+        try {
+            return ApiResponse.success("批量审核完成", adminService.batchReviewReservations(request));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("批量审核失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 自动审核当前待审核预约。
+     *
+     * @param request 管理员参数
+     * @return 自动审核结果
+     */
+    @PostMapping("/reservations/review/auto")
+    public ApiResponse<AdminBatchReviewResultVO> autoReviewPendingReservations(
+            @RequestBody AdminOperateRequest request) {
+        try {
+            if (request == null) {
+                return ApiResponse.fail("操作参数不能为空");
+            }
+            return ApiResponse.success(
+                    "自动审核完成",
+                    adminService.autoReviewPendingReservations(request.getAdminUserId())
+            );
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("自动审核失败，请稍后重试");
         }
     }
 

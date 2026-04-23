@@ -411,7 +411,7 @@ async function submitBooking() {
     uni.showToast({ title: '预约提交成功', icon: 'success' })
     bookingForm.reason = ''
     bookingForm.attendees = ''
-    await loadRoomSchedule()
+    navigateToMyReservations()
   } catch (error) {
     uni.showToast({ title: error.message || '预约提交失败', icon: 'none' })
   } finally {
@@ -483,6 +483,15 @@ function formatDate(date) {
   const month = `${date.getMonth() + 1}`.padStart(2, '0')
   const day = `${date.getDate()}`.padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+/**
+ * 跳转到我的预约页。
+ */
+function navigateToMyReservations() {
+  setTimeout(() => {
+    uni.switchTab({ url: '/pages/booking/index' })
+  }, 600)
 }
 </script>
 

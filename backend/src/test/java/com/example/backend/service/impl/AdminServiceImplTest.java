@@ -1,9 +1,12 @@
 package com.example.backend.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.example.backend.dto.AdminBatchReviewReservationRequest;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
 import com.example.backend.dto.AdminSaveAdminRequest;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.example.backend.entity.MeetingRoom;
 import com.example.backend.entity.Reservation;
 import com.example.backend.entity.User;
@@ -16,8 +19,10 @@ import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.NotificationService;
 import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.service.support.UserAccountSupport;
+import com.example.backend.vo.AdminBatchReviewResultVO;
 import com.example.backend.vo.AdminReservationVO;
 import com.example.backend.vo.AdminUserVO;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,8 +40,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -77,6 +84,8 @@ class AdminServiceImplTest {
      */
     @BeforeEach
     void setUp() {
+        initMybatisLambdaCache(User.class);
+        initMybatisLambdaCache(Reservation.class);
         adminService = new AdminServiceImpl(
                 userMapper,
                 reservationMapper,
@@ -86,6 +95,21 @@ class AdminServiceImplTest {
                 recommendationMapper,
                 reservationStatusManager,
                 notificationService
+        );
+    }
+
+    /**
+     * 初始化MyBatis-Plus lambda字段缓存。
+     *
+     * @param entityClass 实体类型
+     */
+    private void initMybatisLambdaCache(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) != null) {
+            return;
+        }
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                entityClass
         );
     }
 
@@ -136,6 +160,68 @@ class AdminServiceImplTest {
         assertEquals(1, result.size());
         assertEquals(Long.valueOf(22L), result.get(0).getId());
         assertEquals(Boolean.TRUE, result.get(0).getCanReview());
+    }
+
+    /**
+     * 批量通过预约应返回处理统计。
+     */
+    @Test
+    void shouldBatchApproveReservations() {
+        Reservation firstReservation = buildPendingReservation(20L, 2L, 3L, LocalDate.now().plusDays(1));
+        Reservation secondReservation = buildPendingReservation(21L, 2L, 4L, LocalDate.now().plusDays(1));
+        AdminBatchReviewReservationRequest request = new AdminBatchReviewReservationRequest();
+        request.setAdminUserId(99L);
+        request.setReservationIds(List.of(20L, 21L));
+        request.setApproved(true);
+
+        when(userMapper.selectById(99L)).thenReturn(buildAdminUser());
+        when(userMapper.selectById(2L)).thenReturn(buildApplicantUser());
+        when(reservationMapper.selectById(20L)).thenReturn(firstReservation);
+        when(reservationMapper.selectById(21L)).thenReturn(secondReservation);
+        when(meetingRoomMapper.selectById(3L)).thenReturn(buildMeetingRoom(3L, "A101"));
+        when(meetingRoomMapper.selectById(4L)).thenReturn(buildMeetingRoom(4L, "B201"));
+        when(reservationMapper.selectCount(any())).thenReturn(0L);
+        when(reservationMapper.update(any(), any())).thenReturn(1);
+
+        AdminBatchReviewResultVO result = adminService.batchReviewReservations(request);
+
+        assertEquals(Integer.valueOf(2), result.getTotalCount());
+        assertEquals(Integer.valueOf(2), result.getSuccessCount());
+        assertEquals(Integer.valueOf(2), result.getApprovedCount());
+        assertEquals(Integer.valueOf(0), result.getFailedCount());
+        verify(reservationMapper, times(2)).update(any(), any());
+        verify(notificationService, times(2)).createNotification(any(), any(), any(), anyInt(), any());
+    }
+
+    /**
+     * 自动审核应通过可用预约并驳回冲突预约。
+     */
+    @Test
+    void shouldAutoApproveAvailableAndRejectConflictReservations() {
+        Reservation availableReservation = buildPendingReservation(20L, 2L, 3L, LocalDate.now().plusDays(1));
+        Reservation conflictReservation = buildPendingReservation(21L, 2L, 3L, LocalDate.now().plusDays(1));
+
+        when(userMapper.selectById(99L)).thenReturn(buildAdminUser());
+        when(userMapper.selectById(2L)).thenReturn(buildApplicantUser());
+        when(reservationMapper.selectList(any())).thenReturn(List.of(availableReservation, conflictReservation));
+        when(reservationMapper.selectById(20L)).thenReturn(availableReservation);
+        when(reservationMapper.selectById(21L)).thenReturn(conflictReservation);
+        when(meetingRoomMapper.selectById(3L)).thenReturn(buildMeetingRoom(3L, "A101"));
+        when(reservationMapper.selectCount(any())).thenReturn(0L, 0L, 1L);
+        when(reservationMapper.update(any(), any())).thenReturn(1);
+
+        AdminBatchReviewResultVO result = adminService.autoReviewPendingReservations(99L);
+        ArgumentCaptor<Reservation> captor = ArgumentCaptor.forClass(Reservation.class);
+        verify(reservationMapper, times(2)).update(captor.capture(), any());
+
+        assertEquals(Integer.valueOf(2), result.getTotalCount());
+        assertEquals(Integer.valueOf(2), result.getSuccessCount());
+        assertEquals(Integer.valueOf(1), result.getApprovedCount());
+        assertEquals(Integer.valueOf(1), result.getRejectedCount());
+        assertEquals(Integer.valueOf(0), result.getFailedCount());
+        assertEquals(Integer.valueOf(1), captor.getAllValues().get(0).getStatus());
+        assertEquals(Integer.valueOf(2), captor.getAllValues().get(1).getStatus());
+        assertTrue(captor.getAllValues().get(1).getRejectReason().contains("与已通过预约冲突"));
     }
 
     /**
@@ -354,6 +440,8 @@ class AdminServiceImplTest {
         MeetingRoom room = new MeetingRoom();
         room.setId(id);
         room.setName(name);
+        room.setStatus(1);
+        room.setCapacity(20);
         return room;
     }
 }

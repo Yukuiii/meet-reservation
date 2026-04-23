@@ -7,8 +7,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.example.backend.dto.AdminBatchReviewReservationRequest;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
 import com.example.backend.dto.AdminSaveAdminRequest;
@@ -53,6 +54,7 @@ import com.example.backend.service.AdminService;
 import com.example.backend.service.NotificationService;
 import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.service.support.UserAccountSupport;
+import com.example.backend.vo.AdminBatchReviewResultVO;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
 import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
@@ -415,10 +417,114 @@ public class AdminServiceImpl implements AdminService {
             throw new IllegalArgumentException("审核参数不能为空");
         }
         User admin = ensureAdminUser(request.getAdminUserId());
+        if (request.getApproved() == null) {
+            throw new IllegalArgumentException("审核结果不能为空");
+        }
+
+        reviewReservationWithAdmin(
+                reservationId,
+                admin,
+                request.getApproved(),
+                request.getRejectReason(),
+                false
+        );
+    }
+
+    /**
+     * 批量审核预约申请。
+     *
+     * @param request 批量审核参数
+     * @return 批量审核结果
+     */
+    @Override
+    public AdminBatchReviewResultVO batchReviewReservations(AdminBatchReviewReservationRequest request) {
+        reservationStatusManager.refreshExpiredReservations();
+        if (request == null) {
+            throw new IllegalArgumentException("批量审核参数不能为空");
+        }
+        User admin = ensureAdminUser(request.getAdminUserId());
+        if (request.getApproved() == null) {
+            throw new IllegalArgumentException("审核结果不能为空");
+        }
+
+        List<Long> reservationIds = normalizeReservationIds(request.getReservationIds());
+        if (reservationIds.isEmpty()) {
+            throw new IllegalArgumentException("请选择要审核的预约");
+        }
+
+        String rejectReason = cleanText(request.getRejectReason());
+        if (!Boolean.TRUE.equals(request.getApproved()) && !StringUtils.hasText(rejectReason)) {
+            throw new IllegalArgumentException("批量驳回原因不能为空");
+        }
+
+        AdminBatchReviewResultVO result = new AdminBatchReviewResultVO();
+        result.setTotalCount(reservationIds.size());
+        for (Long reservationId : reservationIds) {
+            try {
+                reviewReservationWithAdmin(
+                        reservationId,
+                        admin,
+                        request.getApproved(),
+                        rejectReason,
+                        false
+                );
+                appendBatchSuccess(result, request.getApproved());
+            } catch (RuntimeException e) {
+                appendBatchFailure(result, reservationId, e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 自动审核当前待审核预约。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 自动审核结果
+     */
+    @Override
+    public AdminBatchReviewResultVO autoReviewPendingReservations(Long adminUserId) {
+        reservationStatusManager.refreshExpiredReservations();
+        User admin = ensureAdminUser(adminUserId);
+        List<Reservation> reservationList = reservationMapper.selectList(
+                new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getStatus, RESERVATION_PENDING)
+                        .orderByAsc(Reservation::getReservationDate)
+                        .orderByAsc(Reservation::getStartTime)
+                        .orderByAsc(Reservation::getId)
+        );
+
+        AdminBatchReviewResultVO result = new AdminBatchReviewResultVO();
+        result.setTotalCount(reservationList.size());
+        for (Reservation reservation : reservationList) {
+            try {
+                String blockReason = resolveApprovalBlockReason(reservation);
+                boolean approved = !StringUtils.hasText(blockReason);
+                String rejectReason = approved ? "" : blockReason + "，系统自动驳回";
+                reviewReservationWithAdmin(reservation.getId(), admin, approved, rejectReason, true);
+                appendBatchSuccess(result, approved);
+            } catch (RuntimeException e) {
+                appendBatchFailure(result, reservation.getId(), e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 使用已校验的管理员执行预约审核。
+     *
+     * @param reservationId 预约ID
+     * @param admin         管理员用户
+     * @param approved      是否通过
+     * @param rejectText    驳回原因
+     * @param autoReview    是否自动审核
+     */
+    private void reviewReservationWithAdmin(Long reservationId, User admin, Boolean approved,
+                                            String rejectText, boolean autoReview) {
         if (reservationId == null || reservationId <= 0) {
             throw new IllegalArgumentException("预约ID不合法");
         }
-        if (request.getApproved() == null) {
+        if (approved == null) {
             throw new IllegalArgumentException("审核结果不能为空");
         }
 
@@ -439,18 +545,22 @@ public class AdminServiceImpl implements AdminService {
         updateEntity.setUpdatedAt(LocalDateTime.now());
         String rejectReason = null;
 
-        if (Boolean.TRUE.equals(request.getApproved())) {
+        if (Boolean.TRUE.equals(approved)) {
+            String blockReason = resolveApprovalBlockReason(reservation);
+            if (StringUtils.hasText(blockReason)) {
+                throw new IllegalArgumentException(blockReason + "，无法通过审核");
+            }
             updateEntity.setStatus(RESERVATION_APPROVED);
             updateEntity.setRejectReason(null);
-            updateEntity.setRemark("管理员审核通过");
+            updateEntity.setRemark(autoReview ? "系统自动审核通过" : "管理员审核通过");
         } else {
-            rejectReason = cleanText(request.getRejectReason());
+            rejectReason = cleanText(rejectText);
             if (!StringUtils.hasText(rejectReason)) {
                 throw new IllegalArgumentException("驳回原因不能为空");
             }
             updateEntity.setStatus(RESERVATION_REJECTED);
             updateEntity.setRejectReason(rejectReason);
-            updateEntity.setRemark("管理员驳回：" + rejectReason);
+            updateEntity.setRemark((autoReview ? "系统自动驳回：" : "管理员驳回：") + rejectReason);
         }
 
         int rows = reservationMapper.update(
@@ -463,14 +573,26 @@ public class AdminServiceImpl implements AdminService {
             throw new IllegalStateException("审核失败，请刷新后重试");
         }
 
-        // 发送审核结果通知给预约用户
+        sendReviewNotification(reservation, Boolean.TRUE.equals(approved), rejectReason, reservationId);
+    }
+
+    /**
+     * 发送审核结果通知。
+     *
+     * @param reservation   预约实体
+     * @param approved      是否通过
+     * @param rejectReason  驳回原因
+     * @param reservationId 预约ID
+     */
+    private void sendReviewNotification(Reservation reservation, boolean approved,
+                                        String rejectReason, Long reservationId) {
         MeetingRoom room = meetingRoomMapper.selectById(reservation.getRoomId());
         String roomName = room != null ? room.getName() : "会议室";
         String dateText = reservation.getReservationDate().format(DATE_FORMATTER);
         String timeSlot = reservation.getStartTime().format(TIME_FORMATTER)
-                        + "-" + reservation.getEndTime().format(TIME_FORMATTER);
+                + "-" + reservation.getEndTime().format(TIME_FORMATTER);
 
-        if (Boolean.TRUE.equals(request.getApproved())) {
+        if (approved) {
             notificationService.createNotification(
                     reservation.getUserId(),
                     "预约已通过",
@@ -486,6 +608,118 @@ public class AdminServiceImpl implements AdminService {
                     NOTIFICATION_TYPE_REVIEW_REJECTED, reservationId
             );
         }
+    }
+
+    /**
+     * 解析预约无法通过审核的原因。
+     *
+     * @param reservation 预约实体
+     * @return 阻断原因，为空表示可通过
+     */
+    private String resolveApprovalBlockReason(Reservation reservation) {
+        if (reservation == null
+                || reservation.getReservationDate() == null
+                || reservation.getStartTime() == null
+                || reservation.getEndTime() == null) {
+            return "预约时段不完整";
+        }
+        if (reservationStatusManager.hasReservationStarted(
+                reservation.getReservationDate(),
+                reservation.getStartTime()
+        )) {
+            return "预约时段已开始";
+        }
+
+        MeetingRoom room = meetingRoomMapper.selectById(reservation.getRoomId());
+        if (room == null || Integer.valueOf(ROOM_DISABLED).equals(room.getStatus())) {
+            return "会议室不存在或已停用";
+        }
+        if (Integer.valueOf(ROOM_MAINTENANCE).equals(room.getStatus())) {
+            return "会议室维护中";
+        }
+        if (reservation.getAttendeeCount() == null || reservation.getAttendeeCount() <= 0) {
+            return "参与人数不合法";
+        }
+        if (room.getCapacity() != null && reservation.getAttendeeCount() > room.getCapacity()) {
+            return "参与人数超过会议室容量";
+        }
+
+        User user = userMapper.selectById(reservation.getUserId());
+        if (user == null) {
+            return "预约用户不存在";
+        }
+        if (Integer.valueOf(USER_STATUS_DISABLED).equals(user.getStatus())) {
+            return "预约用户账号已禁用";
+        }
+        if (hasApprovedReservationConflict(reservation)) {
+            return "与已通过预约冲突";
+        }
+        return "";
+    }
+
+    /**
+     * 判断预约是否与已通过预约冲突。
+     *
+     * @param reservation 待审核预约
+     * @return 是否冲突
+     */
+    private boolean hasApprovedReservationConflict(Reservation reservation) {
+        Long conflictCount = reservationMapper.selectCount(
+                new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getRoomId, reservation.getRoomId())
+                        .eq(Reservation::getReservationDate, reservation.getReservationDate())
+                        .eq(Reservation::getStatus, RESERVATION_APPROVED)
+                        .ne(Reservation::getId, reservation.getId())
+                        .lt(Reservation::getStartTime, reservation.getEndTime())
+                        .gt(Reservation::getEndTime, reservation.getStartTime())
+        );
+        return conflictCount != null && conflictCount > 0;
+    }
+
+    /**
+     * 去重并规范化预约ID列表。
+     *
+     * @param reservationIds 原始预约ID列表
+     * @return 去重后的预约ID列表
+     */
+    private List<Long> normalizeReservationIds(List<Long> reservationIds) {
+        if (reservationIds == null || reservationIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return reservationIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .toList();
+    }
+
+    /**
+     * 累加批量审核成功统计。
+     *
+     * @param result   批量结果
+     * @param approved 是否通过
+     */
+    private void appendBatchSuccess(AdminBatchReviewResultVO result, boolean approved) {
+        result.setSuccessCount(result.getSuccessCount() + 1);
+        if (approved) {
+            result.setApprovedCount(result.getApprovedCount() + 1);
+        } else {
+            result.setRejectedCount(result.getRejectedCount() + 1);
+        }
+    }
+
+    /**
+     * 累加批量审核失败统计。
+     *
+     * @param result        批量结果
+     * @param reservationId 预约ID
+     * @param exception     异常
+     */
+    private void appendBatchFailure(AdminBatchReviewResultVO result, Long reservationId, RuntimeException exception) {
+        result.setFailedCount(result.getFailedCount() + 1);
+        String message = StringUtils.hasText(exception.getMessage()) ? exception.getMessage() : "处理失败";
+        result.getFailureMessages().add("预约ID " + reservationId + "：" + message);
     }
 
     /**

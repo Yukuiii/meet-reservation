@@ -1,10 +1,12 @@
 package com.example.backend.service;
 
+import com.example.backend.dto.AdminBatchReviewReservationRequest;
 import com.example.backend.dto.AdminEmergencyOccupyRequest;
 import com.example.backend.dto.AdminReviewReservationRequest;
 import com.example.backend.dto.AdminSaveAdminRequest;
 import com.example.backend.dto.AdminSaveEquipmentRequest;
 import com.example.backend.dto.AdminSaveMeetingRoomRequest;
+import com.example.backend.vo.AdminBatchReviewResultVO;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
 import com.example.backend.vo.AdminEquipmentManageVO;
 import com.example.backend.vo.AdminEquipmentVO;
@@ -68,6 +70,22 @@ public interface AdminService {
      * @param request       审核参数
      */
     void reviewReservation(Long reservationId, AdminReviewReservationRequest request);
+
+    /**
+     * 批量审核预约申请。
+     *
+     * @param request 批量审核参数
+     * @return 批量审核结果
+     */
+    AdminBatchReviewResultVO batchReviewReservations(AdminBatchReviewReservationRequest request);
+
+    /**
+     * 自动审核当前待审核预约。
+     *
+     * @param adminUserId 管理员用户ID
+     * @return 自动审核结果
+     */
+    AdminBatchReviewResultVO autoReviewPendingReservations(Long adminUserId);
 
     /**
      * 查询会议室管理列表。
