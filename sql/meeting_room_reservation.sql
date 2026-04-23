@@ -144,6 +144,24 @@ CREATE TABLE IF NOT EXISTS `equipment_repair` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='设备报修表';
 
 -- ============================================
+-- 7. 预约规则配置表
+-- 控制用户预约提交的时间规则
+-- ============================================
+CREATE TABLE IF NOT EXISTS `reservation_rule` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '规则ID',
+    `max_duration_minutes` INT UNSIGNED NOT NULL DEFAULT 120 COMMENT '单次最大预约时长（分钟）',
+    `min_advance_minutes` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最少提前预约时间（分钟）',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='预约规则配置表';
+
+INSERT INTO `reservation_rule` (`id`, `max_duration_minutes`, `min_advance_minutes`) VALUES
+(1, 120, 0)
+ON DUPLICATE KEY UPDATE
+`id` = VALUES(`id`);
+
+-- ============================================
 -- 初始化数据
 -- ============================================
 

@@ -40,6 +40,13 @@
       </view>
       <view
         class="tab-item"
+        :class="{ active: activeTab === 'rule' }"
+        @click="switchTab('rule')"
+      >
+        预约规则
+      </view>
+      <view
+        class="tab-item"
         :class="{ active: activeTab === 'admin-user' }"
         @click="switchTab('admin-user')"
       >
@@ -324,6 +331,40 @@
         <view class="empty-state" v-if="!adminLoading && adminList.length === 0">
           <text>暂无管理员账号</text>
         </view>
+      </view>
+
+      <view class="panel" v-if="activeTab === 'rule'">
+        <view class="loading-state" v-if="ruleLoading">
+          <text>预约规则加载中...</text>
+        </view>
+        <template v-else>
+          <view class="form-item column">
+            <text class="label">单次最大预约时长（分钟）</text>
+            <input
+              class="input"
+              type="number"
+              v-model="ruleForm.maxDurationMinutes"
+              placeholder="请输入最大预约时长"
+              placeholder-class="placeholder"
+            />
+          </view>
+          <view class="form-item column">
+            <text class="label">最少提前预约时间（分钟）</text>
+            <input
+              class="input"
+              type="number"
+              v-model="ruleForm.minAdvanceMinutes"
+              placeholder="请输入最少提前时间"
+              placeholder-class="placeholder"
+            />
+          </view>
+          <text class="form-tip">
+            保存后立即影响用户新提交的预约，已有预约不自动变更。
+          </text>
+          <button class="action-btn" :disabled="ruleSaving" @click="saveReservationRule">
+            {{ ruleSaving ? '保存中...' : '保存预约规则' }}
+          </button>
+        </template>
       </view>
 
       <view class="panel" v-if="activeTab === 'stats'">
@@ -911,6 +952,13 @@ const page = reactive({
   repairLoading: false,
   repairList: [],
   resolvingRepairId: null,
+  // 预约规则模块
+  ruleLoading: false,
+  ruleSaving: false,
+  ruleForm: {
+    maxDurationMinutes: 120,
+    minAdvanceMinutes: 0
+  },
   // 管理员模块
   adminLoading: false,
   adminList: [],
@@ -1127,6 +1175,10 @@ const page = reactive({
       }
       if (page.activeTab === 'repair') {
         await page.loadRepairList()
+        return
+      }
+      if (page.activeTab === 'rule') {
+        await page.loadReservationRule()
         return
       }
       if (page.activeTab === 'admin-user') {
@@ -1461,6 +1513,65 @@ const page = reactive({
           }
         }
       })
+    },
+
+    /**
+     * 加载预约规则。
+     */
+    async loadReservationRule() {
+      page.ruleLoading = true
+      try {
+        const rule = await request({
+          url: '/api/reservation-rules',
+          method: 'GET'
+        })
+        page.ruleForm = {
+          maxDurationMinutes: rule.maxDurationMinutes || 120,
+          minAdvanceMinutes: rule.minAdvanceMinutes || 0
+        }
+      } catch (error) {
+        uni.showToast({ title: error.message || '加载预约规则失败', icon: 'none' })
+      } finally {
+        page.ruleLoading = false
+      }
+    },
+
+    /**
+     * 保存预约规则。
+     */
+    async saveReservationRule() {
+      const maxDurationMinutes = Number(page.ruleForm.maxDurationMinutes)
+      const minAdvanceMinutes = Number(page.ruleForm.minAdvanceMinutes)
+      if (!Number.isInteger(maxDurationMinutes) || maxDurationMinutes <= 0) {
+        uni.showToast({ title: '最大预约时长必须大于0', icon: 'none' })
+        return
+      }
+      if (!Number.isInteger(minAdvanceMinutes) || minAdvanceMinutes < 0) {
+        uni.showToast({ title: '最少提前时间不能小于0', icon: 'none' })
+        return
+      }
+
+      page.ruleSaving = true
+      try {
+        const rule = await request({
+          url: '/api/admin/reservation-rules',
+          method: 'POST',
+          data: {
+            adminUserId: page.adminUserId,
+            maxDurationMinutes,
+            minAdvanceMinutes
+          }
+        })
+        page.ruleForm = {
+          maxDurationMinutes: rule.maxDurationMinutes || maxDurationMinutes,
+          minAdvanceMinutes: rule.minAdvanceMinutes || minAdvanceMinutes
+        }
+        uni.showToast({ title: '保存成功', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '保存失败', icon: 'none' })
+      } finally {
+        page.ruleSaving = false
+      }
     },
 
     /**
@@ -2306,6 +2417,9 @@ const {
   repairLoading,
   repairList,
   resolvingRepairId,
+  ruleLoading,
+  ruleSaving,
+  ruleForm,
   adminLoading,
   adminList,
   showAdminModal,
@@ -2347,6 +2461,8 @@ const {
   loadEquipmentList,
   loadRepairList,
   resolveRepair,
+  loadReservationRule,
+  saveReservationRule,
   loadEquipmentOptions,
   loadAdminList,
   loadStats,

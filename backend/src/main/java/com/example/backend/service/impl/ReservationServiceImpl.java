@@ -9,11 +9,13 @@ import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.ReservationService;
+import com.example.backend.service.ReservationRuleService;
 import com.example.backend.service.support.ReservationStatusManager;
+import com.example.backend.vo.CreateReservationResponseVO;
 import com.example.backend.vo.ReservationCalendarDayVO;
 import com.example.backend.vo.ReservationCalendarItemVO;
 import com.example.backend.vo.ReservationCalendarVO;
-import com.example.backend.vo.CreateReservationResponseVO;
+import com.example.backend.vo.ReservationRuleVO;
 import com.example.backend.vo.ReservationScheduleItemVO;
 import com.example.backend.vo.UserReservationVO;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -89,6 +92,7 @@ public class ReservationServiceImpl implements ReservationService {
     private final MeetingRoomMapper meetingRoomMapper;
     private final UserMapper userMapper;
     private final ReservationStatusManager reservationStatusManager;
+    private final ReservationRuleService reservationRuleService;
 
     /**
      * 查询会议室指定日期的占用时段。
@@ -377,6 +381,7 @@ public class ReservationServiceImpl implements ReservationService {
         if (reservationStatusManager.hasReservationStarted(request.getReservationDate(), request.getStartTime())) {
             throw new IllegalArgumentException("今天已开始的时段不可预约");
         }
+        validateReservationRule(request);
 
         if (!StringUtils.hasText(request.getTitle())) {
             throw new IllegalArgumentException("会议主题不能为空");
@@ -386,6 +391,25 @@ public class ReservationServiceImpl implements ReservationService {
         }
         if (request.getAttendeeCount() == null || request.getAttendeeCount() <= 0) {
             throw new IllegalArgumentException("参与人数必须大于0");
+        }
+    }
+
+    /**
+     * 校验预约规则。
+     *
+     * @param request 创建请求
+     */
+    private void validateReservationRule(CreateReservationRequest request) {
+        ReservationRuleVO rule = reservationRuleService.getRule();
+        long durationMinutes = Duration.between(request.getStartTime(), request.getEndTime()).toMinutes();
+        if (durationMinutes > rule.getMaxDurationMinutes()) {
+            throw new IllegalArgumentException("单次预约时长不能超过" + rule.getMaxDurationMinutes() + "分钟");
+        }
+
+        LocalDateTime reservationStart = LocalDateTime.of(request.getReservationDate(), request.getStartTime());
+        LocalDateTime earliestStart = LocalDateTime.now().plusMinutes(rule.getMinAdvanceMinutes());
+        if (reservationStart.isBefore(earliestStart)) {
+            throw new IllegalArgumentException("预约需至少提前" + rule.getMinAdvanceMinutes() + "分钟");
         }
     }
 

@@ -51,17 +51,18 @@
         <text>正在加载占用状态...</text>
       </view>
 
-      <view class="time-slots" v-else>
+      <view class="occupied-list" v-else-if="scheduleList.length > 0">
         <view
-          class="time-slot"
-          v-for="(slot, index) in timeSlots"
-          :key="index"
-          :class="{ booked: slot.booked, expired: slot.expired, selected: slot.selected }"
-          @click="selectTimeSlot(index)"
+          class="occupied-item"
+          v-for="item in scheduleList"
+          :key="item.id"
         >
-          <text class="slot-time">{{ slot.time }}</text>
-          <text class="slot-status">{{ getSlotStatusText(slot) }}</text>
+          <text class="occupied-time">{{ item.startTime }}-{{ item.endTime }}</text>
+          <text class="occupied-title">{{ item.title || item.statusText || '已占用' }}</text>
         </view>
+      </view>
+      <view class="day-empty" v-else>
+        <text>当天暂无占用</text>
       </view>
     </view>
 
@@ -69,8 +70,19 @@
     <view class="booking-section">
       <view class="section-title">预约信息</view>
       <view class="form-item">
-        <text class="label">预约时段：</text>
-        <text class="value">{{ selectedTimeText || '请选择时段' }}</text>
+        <text class="label">开始时间：</text>
+        <picker mode="time" :value="bookingForm.startTime" @change="handleStartTimeChange">
+          <view class="picker-value">{{ bookingForm.startTime || '请选择开始时间' }}</view>
+        </picker>
+      </view>
+      <view class="form-item">
+        <text class="label">结束时间：</text>
+        <picker mode="time" :value="bookingForm.endTime" @change="handleEndTimeChange">
+          <view class="picker-value">{{ bookingForm.endTime || '请选择结束时间' }}</view>
+        </picker>
+      </view>
+      <view class="rule-tip">
+        <text>{{ reservationRuleText }}</text>
       </view>
       <view class="form-item">
         <text class="label">预约事由：</text>
@@ -141,16 +153,26 @@ const selectedDate = ref('')
 const minDate = ref('')
 
 /**
- * 时间段列表。
+ * 当日占用列表。
  */
-const timeSlots = ref([])
+const scheduleList = ref([])
 
 /**
  * 预约表单。
  */
 const bookingForm = reactive({
   reason: '',
-  attendees: ''
+  attendees: '',
+  startTime: '09:00',
+  endTime: '10:00'
+})
+
+/**
+ * 预约规则。
+ */
+const reservationRule = ref({
+  maxDurationMinutes: 120,
+  minAdvanceMinutes: 0
 })
 
 /**
@@ -164,28 +186,12 @@ const scheduleLoading = ref(false)
 const submitting = ref(false)
 
 /**
- * 已选择的时间段（按索引升序）。
- * @returns {Array}
- */
-const selectedSlots = computed(() =>
-  timeSlots.value
-    .map((slot, index) => ({ ...slot, index }))
-    .filter(slot => slot.selected)
-    .sort((a, b) => a.index - b.index)
-)
-
-/**
- * 已选择时段文案。
+ * 预约规则文案。
  * @returns {String}
  */
-const selectedTimeText = computed(() => {
-  if (selectedSlots.value.length === 0) {
-    return ''
-  }
-  const start = selectedSlots.value[0].start
-  const end = selectedSlots.value[selectedSlots.value.length - 1].end
-  return `${start}-${end}`
-})
+const reservationRuleText = computed(() =>
+  `单次最长${reservationRule.value.maxDurationMinutes}分钟，至少提前${reservationRule.value.minAdvanceMinutes}分钟预约`
+)
 
 /**
  * 页面初始化。
@@ -201,37 +207,28 @@ onLoad(async (options) => {
   const today = formatDate(new Date())
   selectedDate.value = today
   minDate.value = today
-  timeSlots.value = createDefaultTimeSlots()
 
+  await loadReservationRule()
   await loadRoomDetail()
   await loadRoomSchedule()
 })
 
 /**
- * 创建默认时间段。
- * @returns {Array}
+ * 加载预约规则。
  */
-function createDefaultTimeSlots() {
-  const templates = [
-    ['08:00', '09:00'],
-    ['09:00', '10:00'],
-    ['10:00', '11:00'],
-    ['11:00', '12:00'],
-    ['13:00', '14:00'],
-    ['14:00', '15:00'],
-    ['15:00', '16:00'],
-    ['16:00', '17:00'],
-    ['17:00', '18:00']
-  ]
-
-  return templates.map(item => ({
-    start: item[0],
-    end: item[1],
-      time: `${item[0]}-${item[1]}`,
-      booked: false,
-      expired: false,
-      selected: false
-    }))
+async function loadReservationRule() {
+  try {
+    const rule = await request({
+      url: '/api/reservation-rules',
+      method: 'GET'
+    })
+    reservationRule.value = {
+      maxDurationMinutes: rule.maxDurationMinutes || 120,
+      minAdvanceMinutes: rule.minAdvanceMinutes || 0
+    }
+  } catch (error) {
+    uni.showToast({ title: error.message || '预约规则加载失败', icon: 'none' })
+  }
 }
 
 /**
@@ -271,31 +268,21 @@ async function loadRoomSchedule() {
       method: 'GET'
     })
 
-    syncSlotBookedState(Array.isArray(scheduleList) ? scheduleList : [])
+    syncScheduleList(Array.isArray(scheduleList) ? scheduleList : [])
   } catch (error) {
     uni.showToast({ title: error.message || '占用状态加载失败', icon: 'none' })
-    syncSlotBookedState([])
+    syncScheduleList([])
   } finally {
     scheduleLoading.value = false
   }
 }
 
 /**
- * 将后端占用时段映射到前端时间块。
+ * 同步后端占用时段。
  * @param {Array} scheduleList 占用时段列表
  */
-function syncSlotBookedState(scheduleList) {
-  const nextSlots = createDefaultTimeSlots()
-
-  // 任一占用区间与当前时间块有重叠，即视为该时间块不可预约。
-  nextSlots.forEach(slot => {
-    slot.booked = scheduleList.some(item =>
-      isTimeOverlap(slot.start, slot.end, item.startTime, item.endTime)
-    )
-    slot.expired = isStartedTimeSlot(selectedDate.value, slot.start)
-  })
-
-  timeSlots.value = nextSlots
+function syncScheduleList(nextScheduleList) {
+  scheduleList.value = nextScheduleList
 }
 
 /**
@@ -322,33 +309,32 @@ async function handleDateChange(event) {
 }
 
 /**
- * 选择时间段。
- * @param {Number} index 时间段索引
+ * 选择开始时间。
+ * @param {Object} event 时间选择事件
  */
-function selectTimeSlot(index) {
-  const slot = timeSlots.value[index]
-  if (slot.booked) {
-    uni.showToast({ title: '该时段已被占用', icon: 'none' })
-    return
-  }
-  if (slot.expired) {
-    uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
-    return
-  }
-  slot.selected = !slot.selected
+function handleStartTimeChange(event) {
+  bookingForm.startTime = event.detail.value
+}
+
+/**
+ * 选择结束时间。
+ * @param {Object} event 时间选择事件
+ */
+function handleEndTimeChange(event) {
+  bookingForm.endTime = event.detail.value
 }
 
 /**
  * 提交预约。
  */
 async function submitBooking() {
-  if (selectedSlots.value.length === 0) {
-    uni.showToast({ title: '请选择预约时段', icon: 'none' })
+  if (!bookingForm.startTime || !bookingForm.endTime) {
+    uni.showToast({ title: '请选择预约时间', icon: 'none' })
     return
   }
 
-  if (!isSelectedSlotsContinuous()) {
-    uni.showToast({ title: '请选择连续的预约时段', icon: 'none' })
+  if (bookingForm.startTime >= bookingForm.endTime) {
+    uni.showToast({ title: '开始时间必须早于结束时间', icon: 'none' })
     return
   }
 
@@ -384,10 +370,22 @@ async function submitBooking() {
     return
   }
 
-  const startTime = selectedSlots.value[0].start
-  const endTime = selectedSlots.value[selectedSlots.value.length - 1].end
+  const startTime = bookingForm.startTime
+  const endTime = bookingForm.endTime
   if (isStartedTimeSlot(selectedDate.value, startTime)) {
     uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
+    return
+  }
+  if (isBeforeMinAdvance(selectedDate.value, startTime)) {
+    uni.showToast({ title: `需至少提前${reservationRule.value.minAdvanceMinutes}分钟预约`, icon: 'none' })
+    return
+  }
+  if (calculateDurationMinutes(startTime, endTime) > reservationRule.value.maxDurationMinutes) {
+    uni.showToast({ title: `单次预约不能超过${reservationRule.value.maxDurationMinutes}分钟`, icon: 'none' })
+    return
+  }
+  if (hasScheduleConflict(startTime, endTime)) {
+    uni.showToast({ title: '所选时间段已被占用', icon: 'none' })
     return
   }
 
@@ -420,24 +418,6 @@ async function submitBooking() {
 }
 
 /**
- * 判断选择时段是否连续。
- * @returns {Boolean}
- */
-function isSelectedSlotsContinuous() {
-  if (selectedSlots.value.length <= 1) {
-    return true
-  }
-
-  // 若索引不是连续递增，则代表中间有未选时段。
-  for (let i = 1; i < selectedSlots.value.length; i += 1) {
-    if (selectedSlots.value[i].index !== selectedSlots.value[i - 1].index + 1) {
-      return false
-    }
-  }
-  return true
-}
-
-/**
  * 判断时段是否已经达到开始时间。
  * @param {String} dateText 日期字符串
  * @param {String} startTime 开始时间 HH:mm
@@ -448,18 +428,49 @@ function isStartedTimeSlot(dateText, startTime) {
 }
 
 /**
- * 获取时间段状态文案。
- * @param {Object} slot 时间段
- * @returns {String}
+ * 判断是否不满足最少提前预约时间。
+ * @param {String} dateText 日期字符串
+ * @param {String} startTime 开始时间 HH:mm
+ * @returns {Boolean}
  */
-function getSlotStatusText(slot) {
-  if (slot.booked) {
-    return '已占用'
-  }
-  if (slot.expired) {
-    return '不可预约'
-  }
-  return '可预约'
+function isBeforeMinAdvance(dateText, startTime) {
+  const startDateTime = parseDateTime(dateText, startTime)
+  const earliestTime = new Date(Date.now() + reservationRule.value.minAdvanceMinutes * 60 * 1000)
+  return startDateTime < earliestTime
+}
+
+/**
+ * 判断所选时间是否和已有占用冲突。
+ * @param {String} startTime 开始时间 HH:mm
+ * @param {String} endTime 结束时间 HH:mm
+ * @returns {Boolean}
+ */
+function hasScheduleConflict(startTime, endTime) {
+  return scheduleList.value.some(item => isTimeOverlap(startTime, endTime, item.startTime, item.endTime))
+}
+
+/**
+ * 计算时长分钟数。
+ * @param {String} startTime 开始时间 HH:mm
+ * @param {String} endTime 结束时间 HH:mm
+ * @returns {Number}
+ */
+function calculateDurationMinutes(startTime, endTime) {
+  const [startHour, startMinute] = startTime.split(':').map(Number)
+  const [endHour, endMinute] = endTime.split(':').map(Number)
+  return (endHour * 60 + endMinute) - (startHour * 60 + startMinute)
+}
+
+/**
+ * 解析日期时间。
+ * @param {String} dateText 日期字符串
+ * @param {String} timeText 时间字符串
+ * @returns {Date}
+ */
+function parseDateTime(dateText, timeText) {
+  const [year, month, day] = dateText.split('-').map(Number)
+  const [hour, minute] = timeText.split(':').map(Number)
+  return new Date(year, month - 1, day, hour, minute, 0)
 }
 
 /**
@@ -621,58 +632,42 @@ function navigateToMyReservations() {
   padding: 40rpx 0;
 }
 
-.time-slots {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20rpx 24rpx;
+.occupied-list {
+  display: flex;
+  flex-direction: column;
 }
 
-.time-slot {
-  width: 100%;
-  min-width: 0;
-  padding: 20rpx 0;
-  text-align: center;
-  background-color: #f5f5f5;
-  border-radius: 12rpx;
-  border: 2rpx solid transparent;
-}
-
-.time-slot.booked,
-.time-slot.expired {
+.occupied-item {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 18rpx;
+  border-radius: 10rpx;
   background-color: #ffebee;
-  color: #999;
+  margin-bottom: 12rpx;
 }
 
-.time-slot.selected {
-  background-color: #e3f2fd;
-  border-color: #007aff;
+.occupied-item:last-child {
+  margin-bottom: 0;
 }
 
-.slot-time {
-  display: block;
-  font-size: 26rpx;
-  color: #333;
-  margin-bottom: 8rpx;
-}
-
-.time-slot.booked .slot-time,
-.time-slot.expired .slot-time {
-  color: #999;
-}
-
-.slot-status {
-  display: block;
-  font-size: 22rpx;
-  color: #4caf50;
-}
-
-.time-slot.booked .slot-status,
-.time-slot.expired .slot-status {
+.occupied-time {
+  width: 190rpx;
   color: #f44336;
+  font-size: 25rpx;
+  font-weight: 600;
 }
 
-.time-slot.selected .slot-status {
-  color: #007aff;
+.occupied-title {
+  flex: 1;
+  color: #666;
+  font-size: 25rpx;
+}
+
+.day-empty {
+  text-align: center;
+  color: #999;
+  font-size: 26rpx;
+  padding: 34rpx 0;
 }
 
 /* 预约表单 */
@@ -700,6 +695,17 @@ function navigateToMyReservations() {
   flex: 1;
 }
 
+.picker-value {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 20rpx;
+  background-color: #f5f5f5;
+  border-radius: 8rpx;
+  color: #007aff;
+  font-size: 28rpx;
+  line-height: 72rpx;
+}
+
 .form-item .input {
   flex: 1;
   height: 72rpx;
@@ -711,6 +717,13 @@ function navigateToMyReservations() {
 
 .placeholder {
   color: #ccc;
+}
+
+.rule-tip {
+  color: #888;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  margin: -8rpx 0 20rpx 160rpx;
 }
 
 /* 底部按钮 */

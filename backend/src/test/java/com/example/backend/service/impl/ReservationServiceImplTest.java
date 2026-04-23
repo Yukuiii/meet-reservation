@@ -7,8 +7,10 @@ import com.example.backend.entity.User;
 import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.UserMapper;
+import com.example.backend.service.ReservationRuleService;
 import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.vo.ReservationCalendarVO;
+import com.example.backend.vo.ReservationRuleVO;
 import com.example.backend.vo.UserReservationVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +49,9 @@ class ReservationServiceImplTest {
     @Mock
     private ReservationStatusManager reservationStatusManager;
 
+    @Mock
+    private ReservationRuleService reservationRuleService;
+
     private ReservationServiceImpl reservationService;
 
     /**
@@ -58,7 +63,8 @@ class ReservationServiceImplTest {
                 reservationMapper,
                 meetingRoomMapper,
                 userMapper,
-                reservationStatusManager
+                reservationStatusManager,
+                reservationRuleService
         );
     }
 
@@ -132,6 +138,32 @@ class ReservationServiceImplTest {
     }
 
     /**
+     * 超过最大预约时长时不允许新建预约。
+     */
+    @Test
+    void shouldRejectCreateReservationWhenDurationExceedsRule() {
+        CreateReservationRequest request = new CreateReservationRequest();
+        request.setUserId(1L);
+        request.setRoomId(1L);
+        request.setTitle("长时间会议");
+        request.setPurpose("长时间会议");
+        request.setAttendeeCount(3);
+        request.setReservationDate(LocalDate.now().plusDays(1));
+        request.setStartTime(LocalTime.of(9, 0));
+        request.setEndTime(LocalTime.of(12, 0));
+
+        when(reservationRuleService.getRule()).thenReturn(buildDefaultRule());
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reservationService.createReservation(request)
+        );
+
+        assertEquals("单次预约时长不能超过120分钟", exception.getMessage());
+        verify(reservationStatusManager).refreshExpiredReservations();
+    }
+
+    /**
      * 月视图应返回整月日期并统计有预约日期。
      */
     @Test
@@ -191,5 +223,17 @@ class ReservationServiceImplTest {
         user.setId(1L);
         user.setStatus(1);
         return user;
+    }
+
+    /**
+     * 构造默认预约规则。
+     *
+     * @return 预约规则
+     */
+    private ReservationRuleVO buildDefaultRule() {
+        ReservationRuleVO rule = new ReservationRuleVO();
+        rule.setMaxDurationMinutes(120);
+        rule.setMinAdvanceMinutes(0);
+        return rule;
     }
 }
