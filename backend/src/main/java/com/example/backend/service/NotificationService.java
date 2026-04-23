@@ -19,7 +19,7 @@ public interface NotificationService {
      * @param type          通知类型
      * @param reservationId 关联预约ID（可空）
      */
-    void createNotification(Long userId, String title, String content,
+    Long createNotification(Long userId, String title, String content,
                             int type, Long reservationId);
 
     /**
@@ -53,4 +53,22 @@ public interface NotificationService {
      * @param userId 用户ID
      */
     void markAllAsRead(Long userId);
+
+    /**
+     * 接受一条改约推荐并创建替代预约。
+     *
+     * @param userId           用户ID
+     * @param recommendationId 推荐ID
+     * @return 新预约ID
+     */
+    Long acceptRecommendation(Long userId, Long recommendationId);
+
+    /**
+     * 放弃一条改约推荐。
+     *
+     * @param userId           用户ID
+     * @param recommendationId 推荐ID
+     * @return 是否实际更新推荐状态
+     */
+    boolean declineRecommendation(Long userId, Long recommendationId);
 }

@@ -103,4 +103,54 @@ public class NotificationController {
             return ApiResponse.fail("全部标记已读失败");
         }
     }
+
+    /**
+     * 接受改约推荐。
+     *
+     * @param recommendationId 推荐ID
+     * @param body             请求体（含 userId）
+     * @return 新预约ID
+     */
+    @PostMapping("/recommendations/{recommendationId}/accept")
+    public ApiResponse<Long> acceptRecommendation(@PathVariable Long recommendationId,
+                                                  @RequestBody Map<String, Long> body) {
+        try {
+            Long userId = body.get("userId");
+            if (userId == null) {
+                return ApiResponse.fail("用户ID不能为空");
+            }
+            return ApiResponse.success("改约申请已提交", notificationService.acceptRecommendation(userId, recommendationId));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("接受改约推荐失败");
+        }
+    }
+
+    /**
+     * 放弃改约推荐。
+     *
+     * @param recommendationId 推荐ID
+     * @param body             请求体（含 userId）
+     * @return 统一响应
+     */
+    @PostMapping("/recommendations/{recommendationId}/decline")
+    public ApiResponse<Void> declineRecommendation(@PathVariable Long recommendationId,
+                                                   @RequestBody Map<String, Long> body) {
+        try {
+            Long userId = body.get("userId");
+            if (userId == null) {
+                return ApiResponse.fail("用户ID不能为空");
+            }
+            boolean updated = notificationService.declineRecommendation(userId, recommendationId);
+            if (!updated) {
+                return ApiResponse.fail("改约推荐不存在或已处理");
+            }
+            return ApiResponse.success("已放弃推荐", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("放弃改约推荐失败");
+        }
+    }
 }

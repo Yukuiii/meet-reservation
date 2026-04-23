@@ -238,3 +238,27 @@ CREATE TABLE IF NOT EXISTS `notification` (
     KEY `idx_type` (`type`),
     KEY `idx_reservation_id` (`reservation_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='站内通知表';
+
+-- ============================================
+-- 预约改约推荐表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `reservation_recommendation` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '推荐ID',
+    `notification_id` BIGINT UNSIGNED NOT NULL COMMENT '关联通知ID',
+    `original_reservation_id` BIGINT UNSIGNED NOT NULL COMMENT '原预约ID',
+    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收推荐的用户ID',
+    `admin_user_id` BIGINT UNSIGNED NOT NULL COMMENT '触发推荐的管理员ID',
+    `recommended_room_id` BIGINT UNSIGNED NOT NULL COMMENT '推荐会议室ID',
+    `reservation_date` DATE NOT NULL COMMENT '推荐日期',
+    `start_time` TIME NOT NULL COMMENT '推荐开始时间',
+    `end_time` TIME NOT NULL COMMENT '推荐结束时间',
+    `status` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0-待处理，1-已接受，2-已放弃',
+    `accepted_reservation_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '接受后生成的新预约ID',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_notification_id` (`notification_id`),
+    KEY `idx_user_status` (`user_id`, `status`),
+    KEY `idx_original_reservation_id` (`original_reservation_id`),
+    KEY `idx_recommended_room_time` (`recommended_room_id`, `reservation_date`, `start_time`, `end_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='预约改约推荐表';

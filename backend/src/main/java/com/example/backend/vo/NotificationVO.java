@@ -47,4 +47,9 @@ public class NotificationVO {
      * 创建时间。
      */
     private String createdAt;
+
+    /**
+     * 关联的改约推荐。
+     */
+    private ReservationRecommendationVO recommendation;
 }

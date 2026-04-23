@@ -8,6 +8,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,11 +40,13 @@ import com.example.backend.dto.AdminSaveMeetingRoomRequest;
 import com.example.backend.entity.Equipment;
 import com.example.backend.entity.MeetingRoom;
 import com.example.backend.entity.Reservation;
+import com.example.backend.entity.ReservationRecommendation;
 import com.example.backend.entity.RoomEquipment;
 import com.example.backend.entity.User;
 import com.example.backend.mapper.EquipmentMapper;
 import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
+import com.example.backend.mapper.ReservationRecommendationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AdminService;
@@ -153,6 +156,31 @@ public class AdminServiceImpl implements AdminService {
     private static final int NOTIFICATION_TYPE_REVIEW_REJECTED = 3;
 
     /**
+     * 改约推荐状态：待处理。
+     */
+    private static final int RECOMMENDATION_PENDING = 0;
+
+    /**
+     * 推荐起始工作时间。
+     */
+    private static final LocalTime RECOMMEND_START_TIME = LocalTime.of(8, 0);
+
+    /**
+     * 推荐结束工作时间。
+     */
+    private static final LocalTime RECOMMEND_END_TIME = LocalTime.of(18, 0);
+
+    /**
+     * 推荐午休开始时间。
+     */
+    private static final LocalTime RECOMMEND_LUNCH_START = LocalTime.of(12, 0);
+
+    /**
+     * 推荐午休结束时间。
+     */
+    private static final LocalTime RECOMMEND_LUNCH_END = LocalTime.of(13, 0);
+
+    /**
      * 会议室封面图存储子目录。
      */
     private static final String ROOM_COVER_UPLOAD_SUB_DIR = "meeting-room";
@@ -183,6 +211,7 @@ public class AdminServiceImpl implements AdminService {
     private final MeetingRoomMapper meetingRoomMapper;
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
+    private final ReservationRecommendationMapper recommendationMapper;
     private final ReservationStatusManager reservationStatusManager;
     private final NotificationService notificationService;
 
@@ -898,13 +927,23 @@ public class AdminServiceImpl implements AdminService {
                 for (Reservation conflict : conflictReservations) {
                     String conflictTimeSlot = conflict.getStartTime().format(TIME_FORMATTER)
                                     + "-" + conflict.getEndTime().format(TIME_FORMATTER);
-                    notificationService.createNotification(
+                    RecommendationCandidate candidate = findEmergencyRecommendation(conflict, request);
+                    String recommendationText = candidate == null
+                            ? " 系统暂未找到当天可用的同类型会议室时段。"
+                            : " 已为您推荐同类型会议室「" + candidate.roomName() + "」"
+                                    + dateText + " " + candidate.startTime().format(TIME_FORMATTER)
+                                    + "-" + candidate.endTime().format(TIME_FORMATTER)
+                                    + "，可在消息页选择同意或放弃。";
+                    Long notificationId = notificationService.createNotification(
                             conflict.getUserId(),
                             "预约已被取消",
                             "您在「" + room.getName() + "」" + dateText + " " + conflictTimeSlot
-                                    + " 的预约因管理员紧急占用已取消。原因：" + cancelReasonText,
+                                    + " 的预约因管理员紧急占用已取消。原因：" + cancelReasonText + recommendationText,
                             NOTIFICATION_TYPE_EMERGENCY_CANCEL, conflict.getId()
                     );
+                    if (candidate != null && notificationId != null) {
+                        createRecommendation(notificationId, conflict, admin.getId(), candidate);
+                    }
                 }
             }
         }
@@ -1598,6 +1637,211 @@ public class AdminServiceImpl implements AdminService {
     }
 
     /**
+     * 查找紧急占用取消后的改约推荐。
+     *
+     * @param originalReservation 原预约
+     * @param request             紧急占用请求
+     * @return 推荐候选
+     */
+    private RecommendationCandidate findEmergencyRecommendation(Reservation originalReservation,
+                                                                AdminEmergencyOccupyRequest request) {
+        MeetingRoom originalRoom = meetingRoomMapper.selectById(originalReservation.getRoomId());
+        if (originalRoom == null) {
+            return null;
+        }
+
+        Set<Long> requiredEquipmentIds = buildRoomEquipmentIds(originalReservation.getRoomId());
+        List<MeetingRoom> candidateRooms = meetingRoomMapper.selectList(
+                new LambdaQueryWrapper<MeetingRoom>()
+                        .eq(MeetingRoom::getStatus, ROOM_NORMAL)
+                        .ge(MeetingRoom::getCapacity, originalReservation.getAttendeeCount())
+                        .orderByAsc(MeetingRoom::getCapacity)
+                        .orderByDesc(MeetingRoom::getSortOrder)
+                        .orderByAsc(MeetingRoom::getId)
+        );
+
+        long durationMinutes = Duration.between(
+                originalReservation.getStartTime(),
+                originalReservation.getEndTime()
+        ).toMinutes();
+        if (durationMinutes <= 0) {
+            return null;
+        }
+
+        for (MeetingRoom candidateRoom : candidateRooms) {
+            if (!isSameRoomType(requiredEquipmentIds, candidateRoom.getId())) {
+                continue;
+            }
+            for (LocalTime startTime : buildRecommendationStartTimes(durationMinutes)) {
+                LocalTime endTime = startTime.plusMinutes(durationMinutes);
+                if (isOriginalSameSlot(originalReservation, candidateRoom.getId(), startTime, endTime)) {
+                    continue;
+                }
+                if (isEmergencySlotOverlap(request, candidateRoom.getId(), startTime, endTime)) {
+                    continue;
+                }
+                if (isRecommendationSlotAvailable(
+                        candidateRoom.getId(),
+                        originalReservation.getReservationDate(),
+                        startTime,
+                        endTime
+                )) {
+                    return new RecommendationCandidate(
+                            candidateRoom.getId(),
+                            candidateRoom.getName(),
+                            originalReservation.getReservationDate(),
+                            startTime,
+                            endTime
+                    );
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 保存改约推荐记录。
+     *
+     * @param notificationId       通知ID
+     * @param originalReservation  原预约
+     * @param adminUserId          管理员ID
+     * @param candidate            推荐候选
+     */
+    private void createRecommendation(Long notificationId, Reservation originalReservation,
+                                      Long adminUserId, RecommendationCandidate candidate) {
+        ReservationRecommendation recommendation = new ReservationRecommendation();
+        recommendation.setNotificationId(notificationId);
+        recommendation.setOriginalReservationId(originalReservation.getId());
+        recommendation.setUserId(originalReservation.getUserId());
+        recommendation.setAdminUserId(adminUserId);
+        recommendation.setRecommendedRoomId(candidate.roomId());
+        recommendation.setReservationDate(candidate.date());
+        recommendation.setStartTime(candidate.startTime());
+        recommendation.setEndTime(candidate.endTime());
+        recommendation.setStatus(RECOMMENDATION_PENDING);
+        recommendation.setCreatedAt(LocalDateTime.now());
+        recommendation.setUpdatedAt(LocalDateTime.now());
+        recommendationMapper.insert(recommendation);
+    }
+
+    /**
+     * 判断候选会议室是否满足同类型条件。
+     *
+     * @param requiredEquipmentIds 原会议室设备集合
+     * @param candidateRoomId      候选会议室ID
+     * @return 是否同类型
+     */
+    private boolean isSameRoomType(Set<Long> requiredEquipmentIds, Long candidateRoomId) {
+        if (requiredEquipmentIds.isEmpty()) {
+            return true;
+        }
+        return buildRoomEquipmentIds(candidateRoomId).containsAll(requiredEquipmentIds);
+    }
+
+    /**
+     * 查询会议室设备ID集合。
+     *
+     * @param roomId 会议室ID
+     * @return 设备ID集合
+     */
+    private Set<Long> buildRoomEquipmentIds(Long roomId) {
+        return roomEquipmentMapper.selectList(
+                        new LambdaQueryWrapper<RoomEquipment>()
+                                .eq(RoomEquipment::getRoomId, roomId)
+                )
+                .stream()
+                .map(RoomEquipment::getEquipmentId)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 构建候选开始时间列表。
+     *
+     * @param durationMinutes 原预约持续分钟数
+     * @return 开始时间列表
+     */
+    private List<LocalTime> buildRecommendationStartTimes(long durationMinutes) {
+        List<LocalTime> startTimes = new ArrayList<>();
+        LocalTime current = RECOMMEND_START_TIME;
+        while (!current.plusMinutes(durationMinutes).isAfter(RECOMMEND_END_TIME)) {
+            LocalTime endTime = current.plusMinutes(durationMinutes);
+            if (!isLunchOverlap(current, endTime)) {
+                startTimes.add(current);
+            }
+            current = current.plusHours(1);
+        }
+        return startTimes;
+    }
+
+    /**
+     * 判断推荐时段是否与午休重叠。
+     *
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     * @return 是否重叠
+     */
+    private boolean isLunchOverlap(LocalTime startTime, LocalTime endTime) {
+        return startTime.isBefore(RECOMMEND_LUNCH_END) && endTime.isAfter(RECOMMEND_LUNCH_START);
+    }
+
+    /**
+     * 判断候选是否与原预约完全相同。
+     *
+     * @param originalReservation 原预约
+     * @param roomId              候选会议室ID
+     * @param startTime           开始时间
+     * @param endTime             结束时间
+     * @return 是否相同
+     */
+    private boolean isOriginalSameSlot(Reservation originalReservation, Long roomId,
+                                       LocalTime startTime, LocalTime endTime) {
+        return Objects.equals(originalReservation.getRoomId(), roomId)
+                && Objects.equals(originalReservation.getStartTime(), startTime)
+                && Objects.equals(originalReservation.getEndTime(), endTime);
+    }
+
+    /**
+     * 判断候选是否与即将创建的紧急占用重叠。
+     *
+     * @param request   紧急占用请求
+     * @param roomId    候选会议室ID
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     * @return 是否重叠
+     */
+    private boolean isEmergencySlotOverlap(AdminEmergencyOccupyRequest request, Long roomId,
+                                           LocalTime startTime, LocalTime endTime) {
+        return Objects.equals(request.getRoomId(), roomId)
+                && startTime.isBefore(request.getEndTime())
+                && endTime.isAfter(request.getStartTime());
+    }
+
+    /**
+     * 判断推荐时段是否空闲且未开始。
+     *
+     * @param roomId          会议室ID
+     * @param reservationDate 推荐日期
+     * @param startTime       开始时间
+     * @param endTime         结束时间
+     * @return 是否可用
+     */
+    private boolean isRecommendationSlotAvailable(Long roomId, LocalDate reservationDate,
+                                                  LocalTime startTime, LocalTime endTime) {
+        if (reservationStatusManager.hasReservationStarted(reservationDate, startTime)) {
+            return false;
+        }
+        Long conflictCount = reservationMapper.selectCount(
+                new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getRoomId, roomId)
+                        .eq(Reservation::getReservationDate, reservationDate)
+                        .in(Reservation::getStatus, RESERVATION_PENDING, RESERVATION_APPROVED)
+                        .lt(Reservation::getStartTime, endTime)
+                        .gt(Reservation::getEndTime, startTime)
+        );
+        return conflictCount == null || conflictCount == 0;
+    }
+
+    /**
      * 安全清洗文本。
      *
      * @param value 原始文本
@@ -1605,6 +1849,19 @@ public class AdminServiceImpl implements AdminService {
      */
     private String cleanText(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /**
+     * 紧急占用改约推荐候选。
+     *
+     * @param roomId    会议室ID
+     * @param roomName  会议室名称
+     * @param date      推荐日期
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     */
+    private record RecommendationCandidate(Long roomId, String roomName, LocalDate date,
+                                           LocalTime startTime, LocalTime endTime) {
     }
 
     /**

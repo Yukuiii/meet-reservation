@@ -10,6 +10,7 @@ import com.example.backend.entity.User;
 import com.example.backend.mapper.EquipmentMapper;
 import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
+import com.example.backend.mapper.ReservationRecommendationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.NotificationService;
@@ -61,6 +62,9 @@ class AdminServiceImplTest {
     private EquipmentMapper equipmentMapper;
 
     @Mock
+    private ReservationRecommendationMapper recommendationMapper;
+
+    @Mock
     private ReservationStatusManager reservationStatusManager;
 
     @Mock
@@ -79,6 +83,7 @@ class AdminServiceImplTest {
                 meetingRoomMapper,
                 roomEquipmentMapper,
                 equipmentMapper,
+                recommendationMapper,
                 reservationStatusManager,
                 notificationService
         );

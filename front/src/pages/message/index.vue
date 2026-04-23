@@ -33,6 +33,33 @@
             <text class="card-title">{{ item.title }}</text>
           </view>
           <text class="card-content">{{ item.content }}</text>
+          <view class="recommendation-box" v-if="item.recommendation">
+            <view class="recommendation-title">
+              <text>推荐改约</text>
+              <text class="recommendation-status">{{ item.recommendation.statusText }}</text>
+            </view>
+            <text class="recommendation-line">
+              {{ item.recommendation.roomName }} · {{ item.recommendation.date }} {{ item.recommendation.timeSlot }}
+            </text>
+            <view class="recommendation-actions" v-if="item.recommendation.status === 0">
+              <button
+                class="recommendation-btn accept"
+                size="mini"
+                :disabled="handlingRecommendationId === item.recommendation.id"
+                @click.stop="acceptRecommendation(item.recommendation)"
+              >
+                同意改约
+              </button>
+              <button
+                class="recommendation-btn decline"
+                size="mini"
+                :disabled="handlingRecommendationId === item.recommendation.id"
+                @click.stop="declineRecommendation(item.recommendation)"
+              >
+                放弃
+              </button>
+            </view>
+          </view>
           <view class="card-footer">
             <text class="type-tag" :class="getTypeClass(item.type)">{{ item.typeText }}</text>
             <text class="created-at">{{ item.createdAt }}</text>
@@ -67,6 +94,11 @@ const loading = ref(false)
  * 全部已读提交状态。
  */
 const markingAll = ref(false)
+
+/**
+ * 当前处理中的推荐ID。
+ */
+const handlingRecommendationId = ref(null)
 
 /**
  * 是否存在未读通知。
@@ -185,6 +217,58 @@ async function markAllAsRead() {
     uni.showToast({ title: error.message || '操作失败', icon: 'none' })
   } finally {
     markingAll.value = false
+  }
+}
+
+/**
+ * 接受改约推荐。
+ * @param {Object} recommendation 推荐对象
+ */
+async function acceptRecommendation(recommendation) {
+  const userId = getCurrentUserId()
+  if (!userId || !recommendation || handlingRecommendationId.value) {
+    return
+  }
+
+  handlingRecommendationId.value = recommendation.id
+  try {
+    await request({
+      url: `/api/notifications/recommendations/${recommendation.id}/accept`,
+      method: 'POST',
+      data: { userId }
+    })
+    uni.showToast({ title: '已提交改约申请', icon: 'success' })
+    await loadNotifications()
+  } catch (error) {
+    uni.showToast({ title: error.message || '改约失败', icon: 'none' })
+  } finally {
+    handlingRecommendationId.value = null
+  }
+}
+
+/**
+ * 放弃改约推荐。
+ * @param {Object} recommendation 推荐对象
+ */
+async function declineRecommendation(recommendation) {
+  const userId = getCurrentUserId()
+  if (!userId || !recommendation || handlingRecommendationId.value) {
+    return
+  }
+
+  handlingRecommendationId.value = recommendation.id
+  try {
+    await request({
+      url: `/api/notifications/recommendations/${recommendation.id}/decline`,
+      method: 'POST',
+      data: { userId }
+    })
+    uni.showToast({ title: '已放弃推荐', icon: 'success' })
+    await loadNotifications()
+  } catch (error) {
+    uni.showToast({ title: error.message || '操作失败', icon: 'none' })
+  } finally {
+    handlingRecommendationId.value = null
   }
 }
 
@@ -323,6 +407,67 @@ function getTypeClass(type) {
   font-size: 28rpx;
   line-height: 42rpx;
   word-break: break-all;
+}
+
+.recommendation-box {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 8rpx;
+  background-color: #f6f9ff;
+  border: 1rpx solid #dbeafe;
+}
+
+.recommendation-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #1d4ed8;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 36rpx;
+}
+
+.recommendation-status {
+  color: #666;
+  font-size: 24rpx;
+  font-weight: normal;
+}
+
+.recommendation-line {
+  display: block;
+  margin-top: 8rpx;
+  color: #333;
+  font-size: 26rpx;
+  line-height: 38rpx;
+}
+
+.recommendation-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14rpx;
+}
+
+.recommendation-btn {
+  height: 56rpx;
+  line-height: 56rpx;
+  margin: 0 0 0 14rpx;
+  padding: 0 20rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+}
+
+.recommendation-btn::after {
+  border: none;
+}
+
+.recommendation-btn.accept {
+  color: #fff;
+  background-color: #007aff;
+}
+
+.recommendation-btn.decline {
+  color: #666;
+  background-color: #eef0f3;
 }
 
 .card-footer {
