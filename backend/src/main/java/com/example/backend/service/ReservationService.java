@@ -27,7 +27,7 @@ public interface ReservationService {
      * 查询日历视图预约数据。
      *
      * @param userId      用户ID
-     * @param viewType    视图类型：day/week
+     * @param viewType    视图类型：day/week/month
      * @param targetDate  目标日期
      * @return 日历数据
      */

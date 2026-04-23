@@ -11,7 +11,7 @@ import java.util.List;
 public class ReservationCalendarVO {
 
     /**
-     * 视图类型：day/week。
+     * 视图类型：day/week/month。
      */
     private String viewType;
 

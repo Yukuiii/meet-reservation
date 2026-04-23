@@ -57,10 +57,10 @@ public class ReservationController {
     }
 
     /**
-     * 查询预约日历视图数据（按日/周）。
+     * 查询预约日历视图数据（按日/周/月）。
      *
      * @param userId   用户ID
-     * @param viewType 视图类型：day/week
+     * @param viewType 视图类型：day/week/month
      * @param date     目标日期，格式：yyyy-MM-dd
      * @return 日历数据
      */

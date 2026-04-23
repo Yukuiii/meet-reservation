@@ -77,6 +77,11 @@ public class ReservationServiceImpl implements ReservationService {
      */
     private static final String VIEW_WEEK = "week";
 
+    /**
+     * 月视图。
+     */
+    private static final String VIEW_MONTH = "month";
+
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -115,7 +120,7 @@ public class ReservationServiceImpl implements ReservationService {
      * 查询日历视图预约数据。
      *
      * @param userId     用户ID
-     * @param viewType   视图类型：day/week
+     * @param viewType   视图类型：day/week/month
      * @param targetDate 目标日期
      * @return 日历数据
      */
@@ -126,8 +131,8 @@ public class ReservationServiceImpl implements ReservationService {
 
         String finalViewType = normalizeViewType(viewType);
         LocalDate finalDate = targetDate == null ? LocalDate.now() : targetDate;
-        LocalDate startDate = finalViewType.equals(VIEW_WEEK) ? getWeekStart(finalDate) : finalDate;
-        LocalDate endDate = finalViewType.equals(VIEW_WEEK) ? startDate.plusDays(6) : finalDate;
+        LocalDate startDate = resolveCalendarStartDate(finalViewType, finalDate);
+        LocalDate endDate = resolveCalendarEndDate(finalViewType, startDate, finalDate);
 
         List<Reservation> reservationList = reservationMapper.selectList(
                 new LambdaQueryWrapper<Reservation>()
@@ -446,17 +451,54 @@ public class ReservationServiceImpl implements ReservationService {
      * 标准化日历视图类型。
      *
      * @param viewType 原始视图类型
-     * @return day 或 week
+     * @return day、week 或 month
      */
     private String normalizeViewType(String viewType) {
         if (!StringUtils.hasText(viewType)) {
             return VIEW_DAY;
         }
         String finalViewType = viewType.trim().toLowerCase();
-        if (VIEW_DAY.equals(finalViewType) || VIEW_WEEK.equals(finalViewType)) {
+        if (VIEW_DAY.equals(finalViewType)
+                || VIEW_WEEK.equals(finalViewType)
+                || VIEW_MONTH.equals(finalViewType)) {
             return finalViewType;
         }
-        throw new IllegalArgumentException("日历视图类型不合法，仅支持day/week");
+        throw new IllegalArgumentException("日历视图类型不合法，仅支持day/week/month");
+    }
+
+    /**
+     * 计算日历视图起始日期。
+     *
+     * @param viewType 视图类型
+     * @param date     目标日期
+     * @return 起始日期
+     */
+    private LocalDate resolveCalendarStartDate(String viewType, LocalDate date) {
+        if (VIEW_WEEK.equals(viewType)) {
+            return getWeekStart(date);
+        }
+        if (VIEW_MONTH.equals(viewType)) {
+            return date.withDayOfMonth(1);
+        }
+        return date;
+    }
+
+    /**
+     * 计算日历视图结束日期。
+     *
+     * @param viewType  视图类型
+     * @param startDate 起始日期
+     * @param date      目标日期
+     * @return 结束日期
+     */
+    private LocalDate resolveCalendarEndDate(String viewType, LocalDate startDate, LocalDate date) {
+        if (VIEW_WEEK.equals(viewType)) {
+            return startDate.plusDays(6);
+        }
+        if (VIEW_MONTH.equals(viewType)) {
+            return date.withDayOfMonth(date.lengthOfMonth());
+        }
+        return date;
     }
 
     /**

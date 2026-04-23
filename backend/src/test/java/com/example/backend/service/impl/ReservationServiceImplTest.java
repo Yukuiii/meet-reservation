@@ -8,6 +8,7 @@ import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.support.ReservationStatusManager;
+import com.example.backend.vo.ReservationCalendarVO;
 import com.example.backend.vo.UserReservationVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -128,6 +129,31 @@ class ReservationServiceImplTest {
 
         assertEquals("今天已开始的时段不可预约", exception.getMessage());
         verify(reservationStatusManager).refreshExpiredReservations();
+    }
+
+    /**
+     * 月视图应返回整月日期并统计有预约日期。
+     */
+    @Test
+    void shouldReturnWholeMonthCalendar() {
+        LocalDate targetDate = LocalDate.of(2026, 4, 23);
+        Reservation reservation = buildReservation(12L, 1L, 1, targetDate);
+        MeetingRoom room = new MeetingRoom();
+        room.setId(1L);
+        room.setName("创新会议室");
+
+        when(userMapper.selectById(1L)).thenReturn(buildActiveUser());
+        when(reservationMapper.selectList(any())).thenReturn(List.of(reservation));
+        when(meetingRoomMapper.selectBatchIds(anyCollection())).thenReturn(List.of(room));
+
+        ReservationCalendarVO result = reservationService.getCalendar(1L, "month", targetDate);
+
+        assertEquals("month", result.getViewType());
+        assertEquals("2026-04-01", result.getStartDate());
+        assertEquals("2026-04-30", result.getEndDate());
+        assertEquals(30, result.getDays().size());
+        assertEquals(Integer.valueOf(1), result.getTotalCount());
+        assertEquals(Integer.valueOf(1), result.getDays().get(22).getTotalCount());
     }
 
     /**
