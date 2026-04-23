@@ -33,6 +33,13 @@
       </view>
       <view
         class="tab-item"
+        :class="{ active: activeTab === 'repair' }"
+        @click="switchTab('repair')"
+      >
+        设备报修
+      </view>
+      <view
+        class="tab-item"
         :class="{ active: activeTab === 'admin-user' }"
         @click="switchTab('admin-user')"
       >
@@ -238,6 +245,44 @@
 
         <view class="empty-state" v-if="!equipmentLoading && equipmentList.length === 0">
           <text>暂无设备数据</text>
+        </view>
+      </view>
+
+      <view class="panel" v-if="activeTab === 'repair'">
+        <view class="loading-state" v-if="repairLoading">
+          <text>报修记录加载中...</text>
+        </view>
+
+        <template v-else-if="repairList.length > 0">
+          <view class="room-card" v-for="item in repairList" :key="item.id">
+            <view class="card-header">
+              <text class="card-title">{{ item.equipmentName }}</text>
+              <text class="status-tag" :class="repairStatusClass(item.status)">
+                {{ item.statusText }}
+              </text>
+            </view>
+            <view class="card-line">报修编号：{{ item.repairNo || '-' }}</view>
+            <view class="card-line">会议室：{{ item.roomName || '-' }}</view>
+            <view class="card-line">预约编号：{{ item.reservationNo || '-' }}</view>
+            <view class="card-line">报修用户：{{ item.nickname || item.username || '-' }}</view>
+            <view class="card-line">报修时间：{{ item.createdAt || '-' }}</view>
+            <view class="card-line">故障描述：{{ item.description || '-' }}</view>
+            <view class="card-line" v-if="item.fixedAt">修复时间：{{ item.fixedAt }}</view>
+            <view class="card-line" v-if="item.fixRemark">修复备注：{{ item.fixRemark }}</view>
+            <view class="card-actions" v-if="Number(item.status) === 0">
+              <button
+                class="mini-btn approve"
+                :disabled="resolvingRepairId === item.id"
+                @click="resolveRepair(item)"
+              >
+                {{ resolvingRepairId === item.id ? '处理中...' : '标记已修复' }}
+              </button>
+            </view>
+          </view>
+        </template>
+
+        <view class="empty-state" v-if="!repairLoading && repairList.length === 0">
+          <text>暂无报修记录</text>
         </view>
       </view>
 
@@ -862,6 +907,10 @@ const page = reactive({
   showEquipmentModal: false,
   equipmentSaving: false,
   equipmentForm: createDefaultEquipmentForm(),
+  // 设备报修模块
+  repairLoading: false,
+  repairList: [],
+  resolvingRepairId: null,
   // 管理员模块
   adminLoading: false,
   adminList: [],
@@ -1074,6 +1123,10 @@ const page = reactive({
       }
       if (page.activeTab === 'equipment') {
         await Promise.all([page.loadEquipmentList(), page.loadEquipmentOptions(), page.loadMeetingRooms()])
+        return
+      }
+      if (page.activeTab === 'repair') {
+        await page.loadRepairList()
         return
       }
       if (page.activeTab === 'admin-user') {
@@ -1356,6 +1409,58 @@ const page = reactive({
       } finally {
         page.equipmentLoading = false
       }
+    },
+
+    /**
+     * 加载设备报修列表。
+     */
+    async loadRepairList() {
+      page.repairLoading = true
+      try {
+        const list = await request({
+          url: `/api/admin/equipment-repairs?adminUserId=${page.adminUserId}`,
+          method: 'GET'
+        })
+        page.repairList = Array.isArray(list) ? list : []
+      } catch (error) {
+        uni.showToast({ title: error.message || '加载报修记录失败', icon: 'none' })
+      } finally {
+        page.repairLoading = false
+      }
+    },
+
+    /**
+     * 标记报修记录已修复。
+     * @param {Object} item 报修记录
+     */
+    resolveRepair(item) {
+      uni.showModal({
+        title: '确认修复',
+        content: `确定已修复【${item.equipmentName || '设备'}】吗？`,
+        success: async (res) => {
+          if (!res.confirm || page.resolvingRepairId) {
+            return
+          }
+
+          page.resolvingRepairId = item.id
+          try {
+            await request({
+              url: `/api/admin/equipment-repairs/${item.id}/resolve`,
+              method: 'POST',
+              data: {
+                adminUserId: page.adminUserId,
+                fixRemark: '管理员确认已修复'
+              }
+            })
+            uni.showToast({ title: '已标记修复', icon: 'success' })
+            await page.loadRepairList()
+          } catch (error) {
+            uni.showToast({ title: error.message || '操作失败', icon: 'none' })
+          } finally {
+            page.resolvingRepairId = null
+          }
+        }
+      })
     },
 
     /**
@@ -2074,6 +2179,15 @@ const page = reactive({
     },
 
     /**
+     * 报修状态对应样式类。
+     * @param {Number} status 状态码
+     * @returns {String}
+     */
+    repairStatusClass(status) {
+      return Number(status) === 1 ? 'normal' : 'pending'
+    },
+
+    /**
      * 会议室状态文案转换。
      * @param {Number} status 状态码
      * @returns {String}
@@ -2189,6 +2303,9 @@ const {
   showEquipmentModal,
   equipmentSaving,
   equipmentForm,
+  repairLoading,
+  repairList,
+  resolvingRepairId,
   adminLoading,
   adminList,
   showAdminModal,
@@ -2228,6 +2345,8 @@ const {
   handleReview,
   loadMeetingRooms,
   loadEquipmentList,
+  loadRepairList,
+  resolveRepair,
   loadEquipmentOptions,
   loadAdminList,
   loadStats,
@@ -2261,6 +2380,7 @@ const {
   submitEmergencyOccupy,
   roomStatusClass,
   equipmentStatusClass,
+  repairStatusClass,
   roomStatusText,
   equipmentStatusText,
   adminStatusClass,
@@ -2313,10 +2433,11 @@ const {
   display: flex;
   background-color: #fff;
   border-bottom: 1rpx solid #eee;
+  overflow-x: auto;
 }
 
 .tab-item {
-  flex: 1;
+  flex: 0 0 136rpx;
   text-align: center;
   height: 86rpx;
   line-height: 86rpx;

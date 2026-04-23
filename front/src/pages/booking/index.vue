@@ -66,13 +66,22 @@
             <text class="value">{{ item.purpose }}</text>
           </view>
         </view>
-        <view class="card-footer" v-if="item.canCancel">
+        <view class="card-footer" v-if="item.canCancel || item.canReportRepair">
           <button
             class="cancel-btn"
+            v-if="item.canCancel"
             size="mini"
             @click.stop="cancelBooking(item.id)"
           >
             取消预约
+          </button>
+          <button
+            class="repair-btn"
+            v-if="item.canReportRepair"
+            size="mini"
+            @click.stop="openRepairModal(item)"
+          >
+            设备报修
           </button>
         </view>
       </view>
@@ -94,6 +103,51 @@
           </view>
         </scroll-view>
         <view class="detail-modal-footer" @click="closeDetailModal">确定</view>
+      </view>
+    </view>
+
+    <!-- 设备报修弹窗 -->
+    <view class="detail-modal-mask" v-if="repairModalVisible" @click="closeRepairModal">
+      <view class="detail-modal" @click.stop>
+        <view class="detail-modal-title">设备报修</view>
+        <scroll-view class="detail-modal-body" scroll-y>
+          <view class="detail-row">
+            <text class="detail-label">会议室：</text>
+            <text class="detail-value">{{ repairTargetReservation.roomName || '-' }}</text>
+          </view>
+          <view class="detail-row">
+            <text class="detail-label">预约日期：</text>
+            <text class="detail-value">{{ repairTargetReservation.date || '-' }}</text>
+          </view>
+          <view class="repair-form-item">
+            <text class="repair-label">故障设备</text>
+            <picker
+              :range="repairEquipmentOptions"
+              range-key="name"
+              :value="repairEquipmentIndex"
+              @change="handleRepairEquipmentChange"
+            >
+              <view class="repair-picker">
+                {{ repairEquipmentLabel || (repairEquipmentLoading ? '加载中...' : '请选择设备') }}
+              </view>
+            </picker>
+          </view>
+          <view class="repair-form-item">
+            <text class="repair-label">故障描述</text>
+            <textarea
+              class="repair-textarea"
+              v-model="repairForm.description"
+              placeholder="请描述设备故障现象"
+              placeholder-class="placeholder"
+            />
+          </view>
+        </scroll-view>
+        <view class="repair-modal-footer">
+          <button class="repair-modal-btn cancel" @click="closeRepairModal">取消</button>
+          <button class="repair-modal-btn confirm" :disabled="repairSubmitting" @click="submitRepair">
+            {{ repairSubmitting ? '提交中...' : '提交报修' }}
+          </button>
+        </view>
       </view>
     </view>
   </view>
@@ -131,12 +185,66 @@ const detailModalVisible = ref(false)
 const detailItems = ref([])
 
 /**
+ * 设备报修弹窗可见状态。
+ */
+const repairModalVisible = ref(false)
+
+/**
+ * 当前报修目标预约。
+ */
+const repairTargetReservation = ref({})
+
+/**
+ * 报修设备选项。
+ */
+const repairEquipmentOptions = ref([])
+
+/**
+ * 报修设备加载状态。
+ */
+const repairEquipmentLoading = ref(false)
+
+/**
+ * 报修提交状态。
+ */
+const repairSubmitting = ref(false)
+
+/**
+ * 报修表单。
+ */
+const repairForm = ref({
+  equipmentId: '',
+  description: ''
+})
+
+/**
  * 根据当前标签筛选预约列表。
  * @returns {Array} 筛选结果
  */
 const currentList = computed(() =>
   bookingList.value.filter(item => item.statusKey === currentTab.value)
 )
+
+/**
+ * 报修设备选择索引。
+ * @returns {Number} picker索引
+ */
+const repairEquipmentIndex = computed(() => {
+  const index = repairEquipmentOptions.value.findIndex(item => item.id === repairForm.value.equipmentId)
+  return index >= 0 ? index : 0
+})
+
+/**
+ * 报修设备选择文案。
+ * @returns {String} 设备文案
+ */
+const repairEquipmentLabel = computed(() => {
+  const option = repairEquipmentOptions.value.find(item => item.id === repairForm.value.equipmentId)
+  if (!option) {
+    return ''
+  }
+  return option.quantity > 1 ? `${option.name}（${option.quantity}个）` : option.name
+})
 
 /**
  * 页面展示时刷新预约列表。
@@ -255,6 +363,97 @@ function buildDetailItems(detail) {
 function closeDetailModal() {
   detailModalVisible.value = false
   detailItems.value = []
+}
+
+/**
+ * 打开设备报修弹窗。
+ * @param {Object} item 预约项
+ */
+async function openRepairModal(item) {
+  const userId = getCurrentUserId()
+  if (!userId) {
+    return
+  }
+
+  repairTargetReservation.value = item || {}
+  repairForm.value = { equipmentId: '', description: '' }
+  repairEquipmentOptions.value = []
+  repairModalVisible.value = true
+  repairEquipmentLoading.value = true
+  try {
+    const list = await request({
+      url: `/api/equipment-repairs/options?userId=${userId}&reservationId=${item.id}`,
+      method: 'GET'
+    })
+    repairEquipmentOptions.value = Array.isArray(list) ? list : []
+    if (repairEquipmentOptions.value.length > 0) {
+      repairForm.value.equipmentId = repairEquipmentOptions.value[0].id
+    }
+  } catch (error) {
+    uni.showToast({ title: error.message || '设备加载失败', icon: 'none' })
+  } finally {
+    repairEquipmentLoading.value = false
+  }
+}
+
+/**
+ * 关闭设备报修弹窗。
+ */
+function closeRepairModal() {
+  repairModalVisible.value = false
+  repairTargetReservation.value = {}
+  repairEquipmentOptions.value = []
+  repairForm.value = { equipmentId: '', description: '' }
+}
+
+/**
+ * 处理报修设备选择变化。
+ * @param {Object} event picker事件
+ */
+function handleRepairEquipmentChange(event) {
+  const option = repairEquipmentOptions.value[Number(event.detail.value)]
+  if (option) {
+    repairForm.value.equipmentId = option.id
+  }
+}
+
+/**
+ * 提交设备报修。
+ */
+async function submitRepair() {
+  const userId = getCurrentUserId()
+  if (!userId || repairSubmitting.value) {
+    return
+  }
+  if (!repairForm.value.equipmentId) {
+    uni.showToast({ title: '请选择故障设备', icon: 'none' })
+    return
+  }
+  const description = (repairForm.value.description || '').trim()
+  if (!description) {
+    uni.showToast({ title: '请输入故障描述', icon: 'none' })
+    return
+  }
+
+  repairSubmitting.value = true
+  try {
+    await request({
+      url: '/api/equipment-repairs',
+      method: 'POST',
+      data: {
+        userId,
+        reservationId: repairTargetReservation.value.id,
+        equipmentId: repairForm.value.equipmentId,
+        description
+      }
+    })
+    uni.showToast({ title: '报修已提交', icon: 'success' })
+    closeRepairModal()
+  } catch (error) {
+    uni.showToast({ title: error.message || '提交报修失败', icon: 'none' })
+  } finally {
+    repairSubmitting.value = false
+  }
 }
 
 /**
@@ -437,6 +636,21 @@ function cancelBooking(id) {
   border: none;
 }
 
+.repair-btn {
+  font-size: 24rpx;
+  color: #007aff;
+  background-color: #e3f2fd;
+  border: none;
+  padding: 0 24rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  margin-left: 12rpx;
+}
+
+.repair-btn::after {
+  border: none;
+}
+
 /* 空状态 */
 .empty-state {
   text-align: center;
@@ -516,5 +730,71 @@ function cancelBooking(id) {
   font-size: 30rpx;
   line-height: 96rpx;
   font-weight: 600;
+}
+
+.repair-form-item {
+  padding: 16rpx 0;
+}
+
+.repair-label {
+  display: block;
+  color: #666;
+  font-size: 26rpx;
+  margin-bottom: 12rpx;
+}
+
+.repair-picker {
+  min-height: 72rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+  padding: 0 20rpx;
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+  color: #333;
+  background-color: #fff;
+}
+
+.repair-textarea {
+  width: 100%;
+  min-height: 150rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+  padding: 16rpx 20rpx;
+  box-sizing: border-box;
+  background-color: #fff;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.repair-modal-footer {
+  display: flex;
+  border-top: 1rpx solid #eee;
+}
+
+.repair-modal-btn {
+  flex: 1;
+  height: 92rpx;
+  line-height: 92rpx;
+  border-radius: 0;
+  font-size: 28rpx;
+}
+
+.repair-modal-btn::after {
+  border: none;
+}
+
+.repair-modal-btn.cancel {
+  color: #666;
+  background-color: #f8f8f8;
+}
+
+.repair-modal-btn.confirm {
+  color: #fff;
+  background-color: #007aff;
+}
+
+.repair-modal-btn[disabled] {
+  opacity: 0.7;
 }
 </style>

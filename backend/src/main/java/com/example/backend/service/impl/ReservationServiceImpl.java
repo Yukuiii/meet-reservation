@@ -688,6 +688,7 @@ public class ReservationServiceImpl implements ReservationService {
         item.setRejectReason(reservation.getRejectReason());
         item.setRemark(reservation.getRemark());
         item.setCanCancel(reservationStatusManager.canCancelReservation(reservation));
+        item.setCanReportRepair(Integer.valueOf(STATUS_FINISHED).equals(reservation.getStatus()));
         return item;
     }
 

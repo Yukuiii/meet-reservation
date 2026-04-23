@@ -97,4 +97,9 @@ public class UserReservationVO {
      * 是否允许取消。
      */
     private Boolean canCancel;
+
+    /**
+     * 是否允许设备报修。
+     */
+    private Boolean canReportRepair;
 }

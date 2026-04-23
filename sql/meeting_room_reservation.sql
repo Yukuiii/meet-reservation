@@ -118,6 +118,32 @@ CREATE TABLE `reservation` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='预约表';
 
 -- ============================================
+-- 6. 设备报修表
+-- 用户基于已完成预约提交会议室设备故障
+-- ============================================
+CREATE TABLE IF NOT EXISTS `equipment_repair` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '报修ID',
+    `repair_no` VARCHAR(32) NOT NULL COMMENT '报修编号',
+    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '报修用户ID',
+    `reservation_id` BIGINT UNSIGNED NOT NULL COMMENT '关联预约ID',
+    `room_id` BIGINT UNSIGNED NOT NULL COMMENT '会议室ID',
+    `equipment_id` BIGINT UNSIGNED NOT NULL COMMENT '故障设备ID',
+    `description` VARCHAR(512) NOT NULL COMMENT '故障描述',
+    `status` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0-待处理，1-已修复',
+    `fixed_by` BIGINT UNSIGNED DEFAULT NULL COMMENT '修复管理员ID',
+    `fixed_at` DATETIME DEFAULT NULL COMMENT '修复时间',
+    `fix_remark` VARCHAR(256) DEFAULT NULL COMMENT '修复备注',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_repair_no` (`repair_no`),
+    KEY `idx_user_status` (`user_id`, `status`),
+    KEY `idx_status_created` (`status`, `created_at`),
+    KEY `idx_reservation_equipment` (`reservation_id`, `equipment_id`),
+    KEY `idx_room_equipment` (`room_id`, `equipment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='设备报修表';
+
+-- ============================================
 -- 初始化数据
 -- ============================================
 
