@@ -99,190 +99,197 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { computed, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { request } from '../../utils/request'
+import { refreshNotificationBadge } from '../../utils/notification'
 
 /**
- * 我的预约页面
- * @description 展示用户预约记录，支持按状态筛选、取消预约与查看详情
+ * 当前选中的标签。
  */
-export default {
-  data() {
-    return {
-      // 当前选中的标签
-      currentTab: 'pending',
-      // 预约列表
-      bookingList: [],
-      // 加载状态
-      loading: false,
-      // 预约详情弹窗可见状态
-      detailModalVisible: false,
-      // 预约详情项（按行渲染）
-      detailItems: []
-    }
-  },
+const currentTab = ref('pending')
 
-  /**
-   * 页面展示时刷新预约列表。
-   */
-  onShow() {
-    this.loadBookingList()
-  },
+/**
+ * 预约列表。
+ */
+const bookingList = ref([])
 
-  computed: {
-    /**
-     * 根据当前标签筛选预约列表。
-     * @returns {Array} 筛选结果
-     */
-    currentList() {
-      return this.bookingList.filter(item => item.statusKey === this.currentTab)
-    }
-  },
+/**
+ * 加载状态。
+ */
+const loading = ref(false)
 
-  methods: {
-    /**
-     * 切换标签。
-     * @param {String} tab 标签名称
-     */
-    switchTab(tab) {
-      this.currentTab = tab
-    },
+/**
+ * 预约详情弹窗可见状态。
+ */
+const detailModalVisible = ref(false)
 
-    /**
-     * 获取当前登录用户ID。
-     * @returns {Number|null}
-     */
-    getCurrentUserId() {
-      const userInfo = uni.getStorageSync('userInfo') || {}
-      const userId = Number(userInfo.id)
-      if (!Number.isInteger(userId) || userId <= 0) {
-        return null
-      }
-      return userId
-    },
+/**
+ * 预约详情项（按行渲染）。
+ */
+const detailItems = ref([])
 
-    /**
-     * 加载当前用户预约列表。
-     */
-    async loadBookingList() {
-      const userId = this.getCurrentUserId()
-      if (!userId) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/login/index' })
-        }, 600)
-        return
-      }
+/**
+ * 根据当前标签筛选预约列表。
+ * @returns {Array} 筛选结果
+ */
+const currentList = computed(() =>
+  bookingList.value.filter(item => item.statusKey === currentTab.value)
+)
 
-      this.loading = true
-      try {
-        const list = await request({
-          url: `/api/reservations/my?userId=${userId}`,
-          method: 'GET'
-        })
-        this.bookingList = Array.isArray(list) ? list : []
-      } catch (error) {
-        uni.showToast({ title: error.message || '预约记录加载失败', icon: 'none' })
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /**
-     * 查看预约详情。
-     * @param {Number} id 预约ID
-     */
-    async goToDetail(id) {
-      const userId = this.getCurrentUserId()
-      if (!userId) {
-        return
-      }
-
-      try {
-        const detail = await request({
-          url: `/api/reservations/${id}?userId=${userId}`,
-          method: 'GET'
-        })
-
-        this.detailItems = this.buildDetailItems(detail)
-        this.detailModalVisible = true
-      } catch (error) {
-        uni.showToast({ title: error.message || '详情加载失败', icon: 'none' })
-      }
-    },
-
-    /**
-     * 构建预约详情展示项。
-     * @param {Object} detail 预约详情
-     * @returns {Array<{label: String, value: String}>}
-     */
-    buildDetailItems(detail) {
-      const detailItems = [
-        { label: '预约编号', value: detail.reservationNo || '-' },
-        { label: '会议室', value: detail.roomName || '-' },
-        { label: '日期', value: detail.date || '-' },
-        { label: '时段', value: detail.timeSlot || '-' },
-        { label: '参与人数', value: `${detail.attendees || 0}人` },
-        { label: '状态', value: detail.statusText || '-' },
-        { label: '事由', value: detail.purpose || '-' }
-      ]
-
-      // 仅在字段有值时展示可选信息，避免空行。
-      if (detail.cancelReason) {
-        detailItems.push({ label: '取消原因', value: detail.cancelReason })
-      }
-      if (detail.rejectReason) {
-        detailItems.push({ label: '拒绝原因', value: detail.rejectReason })
-      }
-      if (detail.remark) {
-        detailItems.push({ label: '备注', value: detail.remark })
-      }
-      return detailItems
-    },
-
-    /**
-     * 关闭预约详情弹窗并清理数据。
-     */
-    closeDetailModal() {
-      this.detailModalVisible = false
-      this.detailItems = []
-    },
-
-    /**
-     * 取消预约。
-     * @param {Number} id 预约ID
-     */
-    cancelBooking(id) {
-      const userId = this.getCurrentUserId()
-      if (!userId) {
-        return
-      }
-
-      uni.showModal({
-        title: '提示',
-        content: '确定要取消该预约吗？',
-        success: async (res) => {
-          if (!res.confirm) {
-            return
-          }
-          try {
-            await request({
-              url: `/api/reservations/${id}/cancel`,
-              method: 'POST',
-              data: {
-                userId,
-                cancelReason: '用户主动取消'
-              }
-            })
-            uni.showToast({ title: '已取消预约', icon: 'success' })
-            this.loadBookingList()
-          } catch (error) {
-            uni.showToast({ title: error.message || '取消失败', icon: 'none' })
-          }
-        }
-      })
-    }
+/**
+ * 页面展示时刷新预约列表。
+ */
+onShow(() => {
+  const userId = getCurrentUserId()
+  if (userId) {
+    refreshNotificationBadge(userId)
   }
+  loadBookingList()
+})
+
+/**
+ * 切换标签。
+ * @param {String} tab 标签名称
+ */
+function switchTab(tab) {
+  currentTab.value = tab
+}
+
+/**
+ * 获取当前登录用户ID。
+ * @returns {Number|null}
+ */
+function getCurrentUserId() {
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  const userId = Number(userInfo.id)
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return null
+  }
+  return userId
+}
+
+/**
+ * 加载当前用户预约列表。
+ */
+async function loadBookingList() {
+  const userId = getCurrentUserId()
+  if (!userId) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    setTimeout(() => {
+      uni.reLaunch({ url: '/pages/login/index' })
+    }, 600)
+    return
+  }
+
+  loading.value = true
+  try {
+    const list = await request({
+      url: `/api/reservations/my?userId=${userId}`,
+      method: 'GET'
+    })
+    bookingList.value = Array.isArray(list) ? list : []
+  } catch (error) {
+    uni.showToast({ title: error.message || '预约记录加载失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 查看预约详情。
+ * @param {Number} id 预约ID
+ */
+async function goToDetail(id) {
+  const userId = getCurrentUserId()
+  if (!userId) {
+    return
+  }
+
+  try {
+    const detail = await request({
+      url: `/api/reservations/${id}?userId=${userId}`,
+      method: 'GET'
+    })
+
+    detailItems.value = buildDetailItems(detail)
+    detailModalVisible.value = true
+  } catch (error) {
+    uni.showToast({ title: error.message || '详情加载失败', icon: 'none' })
+  }
+}
+
+/**
+ * 构建预约详情展示项。
+ * @param {Object} detail 预约详情
+ * @returns {Array<{label: String, value: String}>}
+ */
+function buildDetailItems(detail) {
+  const nextDetailItems = [
+    { label: '预约编号', value: detail.reservationNo || '-' },
+    { label: '会议室', value: detail.roomName || '-' },
+    { label: '日期', value: detail.date || '-' },
+    { label: '时段', value: detail.timeSlot || '-' },
+    { label: '参与人数', value: `${detail.attendees || 0}人` },
+    { label: '状态', value: detail.statusText || '-' },
+    { label: '事由', value: detail.purpose || '-' }
+  ]
+
+  // 仅在字段有值时展示可选信息，避免空行。
+  if (detail.cancelReason) {
+    nextDetailItems.push({ label: '取消原因', value: detail.cancelReason })
+  }
+  if (detail.rejectReason) {
+    nextDetailItems.push({ label: '拒绝原因', value: detail.rejectReason })
+  }
+  if (detail.remark) {
+    nextDetailItems.push({ label: '备注', value: detail.remark })
+  }
+  return nextDetailItems
+}
+
+/**
+ * 关闭预约详情弹窗并清理数据。
+ */
+function closeDetailModal() {
+  detailModalVisible.value = false
+  detailItems.value = []
+}
+
+/**
+ * 取消预约。
+ * @param {Number} id 预约ID
+ */
+function cancelBooking(id) {
+  const userId = getCurrentUserId()
+  if (!userId) {
+    return
+  }
+
+  uni.showModal({
+    title: '提示',
+    content: '确定要取消该预约吗？',
+    success: async (res) => {
+      if (!res.confirm) {
+        return
+      }
+      try {
+        await request({
+          url: `/api/reservations/${id}/cancel`,
+          method: 'POST',
+          data: {
+            userId,
+            cancelReason: '用户主动取消'
+          }
+        })
+        uni.showToast({ title: '已取消预约', icon: 'success' })
+        loadBookingList()
+      } catch (error) {
+        uni.showToast({ title: error.message || '取消失败', icon: 'none' })
+      }
+    }
+  })
 }
 </script>
 

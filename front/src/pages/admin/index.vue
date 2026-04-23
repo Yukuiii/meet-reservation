@@ -364,6 +364,9 @@
             @change="handleForceOverrideChange"
           />
         </view>
+        <text class="form-tip">
+          开启后将取消冲突的待审核/已通过预约，并自动通知受影响用户。
+        </text>
 
         <view class="form-item column" v-if="emergencyForm.forceOverride">
           <text class="label">冲突取消原因</text>
@@ -685,7 +688,9 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { reactive, toRefs } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { buildAssetUrl, request, uploadFile } from '../../utils/request'
 
 const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
@@ -793,149 +798,139 @@ function createDefaultEmergencyForm() {
   }
 }
 
-/**
- * 管理员页面
- * @description 审核预约、管理会议室/设备/管理员、查看统计并处理紧急占用
- */
-export default {
-  data() {
-    return {
-      // 当前标签
-      activeTab: 'review',
-      // 管理员ID
-      adminUserId: null,
-      // 审核模块
-      reviewLoading: false,
-      reviewingId: null,
-      pendingReservations: [],
-      // 会议室模块
-      roomLoading: false,
-      roomList: [],
-      equipmentOptions: [],
-      showRoomModal: false,
-      roomSaving: false,
-      roomCoverUploading: false,
-      roomForm: createDefaultRoomForm(),
-      // 设备模块
-      equipmentLoading: false,
-      equipmentList: [],
-      showEquipmentModal: false,
-      equipmentSaving: false,
-      equipmentForm: createDefaultEquipmentForm(),
-      // 管理员模块
-      adminLoading: false,
-      adminList: [],
-      showAdminModal: false,
-      adminSaving: false,
-      adminForm: createDefaultAdminForm(),
-      // 统计模块
-      statsLoading: false,
-      stats: createDefaultStats(),
-      // 紧急占用模块
-      emergencySubmitting: false,
-      emergencyForm: createDefaultEmergencyForm(),
-      minDate: ''
-    }
-  },
+const page = reactive({
+  // 当前标签
+  activeTab: 'review',
+  // 管理员ID
+  adminUserId: null,
+  // 审核模块
+  reviewLoading: false,
+  reviewingId: null,
+  pendingReservations: [],
+  // 会议室模块
+  roomLoading: false,
+  roomList: [],
+  equipmentOptions: [],
+  showRoomModal: false,
+  roomSaving: false,
+  roomCoverUploading: false,
+  roomForm: createDefaultRoomForm(),
+  // 设备模块
+  equipmentLoading: false,
+  equipmentList: [],
+  showEquipmentModal: false,
+  equipmentSaving: false,
+  equipmentForm: createDefaultEquipmentForm(),
+  // 管理员模块
+  adminLoading: false,
+  adminList: [],
+  showAdminModal: false,
+  adminSaving: false,
+  adminForm: createDefaultAdminForm(),
+  // 统计模块
+  statsLoading: false,
+  stats: createDefaultStats(),
+  // 紧急占用模块
+  emergencySubmitting: false,
+  emergencyForm: createDefaultEmergencyForm(),
+  minDate: '',
 
   /**
    * 页面加载。
    */
   async onLoad() {
-    if (!this.ensureAdminLogin()) {
+    if (!page.ensureAdminLogin()) {
       return
     }
 
-    this.minDate = this.formatDate(new Date())
-    this.emergencyForm.reservationDate = this.minDate
-    await this.loadAllData()
+    page.minDate = page.formatDate(new Date())
+    page.emergencyForm.reservationDate = page.minDate
+    await page.loadAllData()
   },
 
-  computed: {
-    /**
-     * 会议室状态文案列表（用于picker）。
-     * @returns {Array}
-     */
-    roomStatusLabels() {
+  /**
+   * 会议室状态文案列表（用于picker）。
+   * @returns {Array}
+   */
+  get roomStatusLabels() {
       return ROOM_STATUS_OPTIONS.map(item => item.label)
-    },
+  },
 
-    /**
-     * 当前会议室状态在picker中的索引。
-     * @returns {Number}
-     */
-    roomStatusIndex() {
-      const index = ROOM_STATUS_OPTIONS.findIndex(item => item.value === Number(this.roomForm.status))
+  /**
+   * 当前会议室状态在picker中的索引。
+   * @returns {Number}
+   */
+  get roomStatusIndex() {
+      const index = ROOM_STATUS_OPTIONS.findIndex(item => item.value === Number(page.roomForm.status))
       return index >= 0 ? index : 0
-    },
+  },
 
-    /**
-     * 设备状态文案列表（用于picker）。
-     * @returns {Array}
-     */
-    equipmentStatusLabels() {
+  /**
+   * 设备状态文案列表（用于picker）。
+   * @returns {Array}
+   */
+  get equipmentStatusLabels() {
       return EQUIPMENT_STATUS_OPTIONS.map(item => item.label)
-    },
+  },
 
-    /**
-     * 当前设备状态在picker中的索引。
-     * @returns {Number}
-     */
-    equipmentStatusIndex() {
-      const index = EQUIPMENT_STATUS_OPTIONS.findIndex(item => item.value === Number(this.equipmentForm.status))
+  /**
+   * 当前设备状态在picker中的索引。
+   * @returns {Number}
+   */
+  get equipmentStatusIndex() {
+      const index = EQUIPMENT_STATUS_OPTIONS.findIndex(item => item.value === Number(page.equipmentForm.status))
       return index >= 0 ? index : 0
-    },
+  },
 
-    /**
-     * 管理员状态文案列表（用于picker）。
-     * @returns {Array}
-     */
-    adminStatusLabels() {
+  /**
+   * 管理员状态文案列表（用于picker）。
+   * @returns {Array}
+   */
+  get adminStatusLabels() {
       return ADMIN_STATUS_OPTIONS.map(item => item.label)
-    },
+  },
 
-    /**
-     * 当前管理员状态在picker中的索引。
-     * @returns {Number}
-     */
-    adminStatusIndex() {
-      const index = ADMIN_STATUS_OPTIONS.findIndex(item => item.value === Number(this.adminForm.status))
+  /**
+   * 当前管理员状态在picker中的索引。
+   * @returns {Number}
+   */
+  get adminStatusIndex() {
+      const index = ADMIN_STATUS_OPTIONS.findIndex(item => item.value === Number(page.adminForm.status))
       return index >= 0 ? index : 0
-    },
+  },
 
-    /**
-     * 紧急占用会议室选项。
-     * @returns {Array}
-     */
-    emergencyRoomOptions() {
-      return this.roomList
+  /**
+   * 紧急占用会议室选项。
+   * @returns {Array}
+   */
+  get emergencyRoomOptions() {
+      return page.roomList
         .filter(item => Number(item.status) !== 0)
         .map(item => ({
           label: `${item.name}（${item.location || '未知位置'}）`,
           value: item.id
         }))
-    },
-
-    /**
-     * 紧急占用会议室picker索引。
-     * @returns {Number}
-     */
-    emergencyRoomIndex() {
-      const index = this.emergencyRoomOptions.findIndex(item => item.value === this.emergencyForm.roomId)
-      return index >= 0 ? index : 0
-    },
-
-    /**
-     * 紧急占用会议室标签。
-     * @returns {String}
-     */
-    emergencyRoomLabel() {
-      const room = this.emergencyRoomOptions.find(item => item.value === this.emergencyForm.roomId)
-      return room ? room.label : ''
-    }
   },
 
-  methods: {
+  /**
+   * 紧急占用会议室picker索引。
+   * @returns {Number}
+   */
+  get emergencyRoomIndex() {
+      const index = page.emergencyRoomOptions.findIndex(item => item.value === page.emergencyForm.roomId)
+      return index >= 0 ? index : 0
+  },
+
+  /**
+   * 紧急占用会议室标签。
+   * @returns {String}
+   */
+  get emergencyRoomLabel() {
+      const room = page.emergencyRoomOptions.find(item => item.value === page.emergencyForm.roomId)
+      return room ? room.label : ''
+  },
+
+
     /**
      * 跳转到日历视图。
      */
@@ -960,7 +955,7 @@ export default {
         return false
       }
 
-      this.adminUserId = userId
+      page.adminUserId = userId
       return true
     },
 
@@ -969,12 +964,12 @@ export default {
      */
     async loadAllData() {
       await Promise.all([
-        this.loadPendingReservations(),
-        this.loadMeetingRooms(),
-        this.loadEquipmentList(),
-        this.loadEquipmentOptions(),
-        this.loadAdminList(),
-        this.loadStats()
+        page.loadPendingReservations(),
+        page.loadMeetingRooms(),
+        page.loadEquipmentList(),
+        page.loadEquipmentOptions(),
+        page.loadAdminList(),
+        page.loadStats()
       ])
     },
 
@@ -983,37 +978,37 @@ export default {
      * @param {String} tab 标签名
      */
     async switchTab(tab) {
-      this.activeTab = tab
-      await this.refreshCurrentTab()
+      page.activeTab = tab
+      await page.refreshCurrentTab()
     },
 
     /**
      * 刷新当前标签数据。
      */
     async refreshCurrentTab() {
-      if (this.activeTab === 'review') {
-        await this.loadPendingReservations()
-        await this.loadStats()
+      if (page.activeTab === 'review') {
+        await page.loadPendingReservations()
+        await page.loadStats()
         return
       }
-      if (this.activeTab === 'room') {
-        await Promise.all([this.loadMeetingRooms(), this.loadEquipmentOptions(), this.loadStats()])
+      if (page.activeTab === 'room') {
+        await Promise.all([page.loadMeetingRooms(), page.loadEquipmentOptions(), page.loadStats()])
         return
       }
-      if (this.activeTab === 'equipment') {
-        await Promise.all([this.loadEquipmentList(), this.loadEquipmentOptions(), this.loadMeetingRooms()])
+      if (page.activeTab === 'equipment') {
+        await Promise.all([page.loadEquipmentList(), page.loadEquipmentOptions(), page.loadMeetingRooms()])
         return
       }
-      if (this.activeTab === 'admin-user') {
-        await Promise.all([this.loadAdminList(), this.loadStats()])
+      if (page.activeTab === 'admin-user') {
+        await Promise.all([page.loadAdminList(), page.loadStats()])
         return
       }
-      if (this.activeTab === 'stats') {
-        await this.loadStats()
+      if (page.activeTab === 'stats') {
+        await page.loadStats()
         return
       }
-      if (this.activeTab === 'emergency') {
-        await Promise.all([this.loadMeetingRooms(), this.loadStats()])
+      if (page.activeTab === 'emergency') {
+        await Promise.all([page.loadMeetingRooms(), page.loadStats()])
       }
     },
 
@@ -1021,23 +1016,23 @@ export default {
      * 加载待审核预约。
      */
     async loadPendingReservations() {
-      this.reviewLoading = true
+      page.reviewLoading = true
       try {
         const list = await request({
-          url: `/api/admin/reservations/pending?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/reservations/pending?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
 
         const finalList = Array.isArray(list) ? list : []
         // 为每条预约补充前端驳回原因草稿字段，避免污染后端真实数据结构。
-        this.pendingReservations = finalList.map(item => ({
+        page.pendingReservations = finalList.map(item => ({
           ...item,
           rejectReasonDraft: ''
         }))
       } catch (error) {
         uni.showToast({ title: error.message || '加载待审核预约失败', icon: 'none' })
       } finally {
-        this.reviewLoading = false
+        page.reviewLoading = false
       }
     },
 
@@ -1058,27 +1053,27 @@ export default {
             return
           }
 
-          if (this.reviewingId) {
+          if (page.reviewingId) {
             return
           }
 
-          this.reviewingId = item.id
+          page.reviewingId = item.id
           try {
             await request({
               url: `/api/admin/reservations/${item.id}/review`,
               method: 'POST',
               data: {
-                adminUserId: this.adminUserId,
+                adminUserId: page.adminUserId,
                 approved,
                 rejectReason
               }
             })
             uni.showToast({ title: '审核完成', icon: 'success' })
-            await Promise.all([this.loadPendingReservations(), this.loadStats()])
+            await Promise.all([page.loadPendingReservations(), page.loadStats()])
           } catch (error) {
             uni.showToast({ title: error.message || '审核失败', icon: 'none' })
           } finally {
-            this.reviewingId = null
+            page.reviewingId = null
           }
         }
       })
@@ -1088,26 +1083,26 @@ export default {
      * 加载会议室列表。
      */
     async loadMeetingRooms() {
-      this.roomLoading = true
+      page.roomLoading = true
       try {
         const list = await request({
-          url: `/api/admin/meeting-rooms?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/meeting-rooms?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
-        this.roomList = Array.isArray(list) ? list : []
+        page.roomList = Array.isArray(list) ? list : []
 
-        const roomOptionExists = this.emergencyRoomOptions.some(
-          item => item.value === this.emergencyForm.roomId
+        const roomOptionExists = page.emergencyRoomOptions.some(
+          item => item.value === page.emergencyForm.roomId
         )
         if (!roomOptionExists) {
-          this.emergencyForm.roomId = this.emergencyRoomOptions.length > 0
-            ? this.emergencyRoomOptions[0].value
+          page.emergencyForm.roomId = page.emergencyRoomOptions.length > 0
+            ? page.emergencyRoomOptions[0].value
             : ''
         }
       } catch (error) {
         uni.showToast({ title: error.message || '加载会议室失败', icon: 'none' })
       } finally {
-        this.roomLoading = false
+        page.roomLoading = false
       }
     },
 
@@ -1115,17 +1110,17 @@ export default {
      * 加载设备管理列表。
      */
     async loadEquipmentList() {
-      this.equipmentLoading = true
+      page.equipmentLoading = true
       try {
         const list = await request({
-          url: `/api/admin/equipments/manage?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/equipments/manage?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
-        this.equipmentList = Array.isArray(list) ? list : []
+        page.equipmentList = Array.isArray(list) ? list : []
       } catch (error) {
         uni.showToast({ title: error.message || '加载设备列表失败', icon: 'none' })
       } finally {
-        this.equipmentLoading = false
+        page.equipmentLoading = false
       }
     },
 
@@ -1135,10 +1130,10 @@ export default {
     async loadEquipmentOptions() {
       try {
         const list = await request({
-          url: `/api/admin/equipments?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/equipments?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
-        this.equipmentOptions = Array.isArray(list) ? list : []
+        page.equipmentOptions = Array.isArray(list) ? list : []
       } catch (error) {
         uni.showToast({ title: error.message || '加载设备选项失败', icon: 'none' })
       }
@@ -1148,17 +1143,17 @@ export default {
      * 加载管理员列表。
      */
     async loadAdminList() {
-      this.adminLoading = true
+      page.adminLoading = true
       try {
         const list = await request({
-          url: `/api/admin/admin-users?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/admin-users?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
-        this.adminList = Array.isArray(list) ? list : []
+        page.adminList = Array.isArray(list) ? list : []
       } catch (error) {
         uni.showToast({ title: error.message || '加载管理员失败', icon: 'none' })
       } finally {
-        this.adminLoading = false
+        page.adminLoading = false
       }
     },
 
@@ -1166,17 +1161,17 @@ export default {
      * 加载统计数据。
      */
     async loadStats() {
-      this.statsLoading = true
+      page.statsLoading = true
       try {
         const stats = await request({
-          url: `/api/admin/stats?adminUserId=${this.adminUserId}`,
+          url: `/api/admin/stats?adminUserId=${page.adminUserId}`,
           method: 'GET'
         })
-        this.stats = { ...createDefaultStats(), ...(stats || {}) }
+        page.stats = { ...createDefaultStats(), ...(stats || {}) }
       } catch (error) {
         uni.showToast({ title: error.message || '加载统计数据失败', icon: 'none' })
       } finally {
-        this.statsLoading = false
+        page.statsLoading = false
       }
     },
 
@@ -1184,9 +1179,9 @@ export default {
      * 打开新增会议室弹窗。
      */
     openCreateRoom() {
-      this.roomForm = createDefaultRoomForm()
-      this.roomCoverUploading = false
-      this.showRoomModal = true
+      page.roomForm = createDefaultRoomForm()
+      page.roomCoverUploading = false
+      page.showRoomModal = true
     },
 
     /**
@@ -1194,7 +1189,7 @@ export default {
      * @param {Object} room 会议室数据
      */
     openEditRoom(room) {
-      this.roomForm = {
+      page.roomForm = {
         id: room.id,
         name: room.name || '',
         capacity: `${room.capacity || ''}`,
@@ -1207,18 +1202,18 @@ export default {
         sortOrder: room.sortOrder || 0,
         equipmentIds: Array.isArray(room.equipmentIds) ? [...room.equipmentIds] : []
       }
-      this.roomCoverUploading = false
-      this.showRoomModal = true
+      page.roomCoverUploading = false
+      page.showRoomModal = true
     },
 
     /**
      * 关闭会议室弹窗。
      */
     closeRoomModal() {
-      if (this.roomSaving || this.roomCoverUploading) {
+      if (page.roomSaving || page.roomCoverUploading) {
         return
       }
-      this.showRoomModal = false
+      page.showRoomModal = false
     },
 
     /**
@@ -1234,7 +1229,7 @@ export default {
      * 选择并上传会议室封面图。
      */
     chooseRoomCoverImage() {
-      if (this.roomCoverUploading) {
+      if (page.roomCoverUploading) {
         return
       }
 
@@ -1249,22 +1244,22 @@ export default {
             return
           }
 
-          this.roomCoverUploading = true
+          page.roomCoverUploading = true
           try {
             const uploadedUrl = await uploadFile({
               url: '/api/admin/meeting-rooms/cover',
               filePath,
               name: 'file',
               formData: {
-                adminUserId: `${this.adminUserId}`
+                adminUserId: `${page.adminUserId}`
               }
             })
-            this.roomForm.coverImage = uploadedUrl || ''
+            page.roomForm.coverImage = uploadedUrl || ''
             uni.showToast({ title: '上传成功', icon: 'success' })
           } catch (error) {
             uni.showToast({ title: error.message || '上传封面失败', icon: 'none' })
           } finally {
-            this.roomCoverUploading = false
+            page.roomCoverUploading = false
           }
         },
         fail: (err) => {
@@ -1281,18 +1276,18 @@ export default {
      * 清空会议室封面图。
      */
     clearRoomCoverImage() {
-      if (this.roomCoverUploading) {
+      if (page.roomCoverUploading) {
         return
       }
-      this.roomForm.coverImage = ''
+      page.roomForm.coverImage = ''
     },
 
     /**
      * 打开新增设备弹窗。
      */
     openCreateEquipment() {
-      this.equipmentForm = createDefaultEquipmentForm()
-      this.showEquipmentModal = true
+      page.equipmentForm = createDefaultEquipmentForm()
+      page.showEquipmentModal = true
     },
 
     /**
@@ -1300,32 +1295,32 @@ export default {
      * @param {Object} equipment 设备数据
      */
     openEditEquipment(equipment) {
-      this.equipmentForm = {
+      page.equipmentForm = {
         id: equipment.id,
         name: equipment.name || '',
         icon: equipment.icon || '',
         description: equipment.description || '',
         status: Number(equipment.status)
       }
-      this.showEquipmentModal = true
+      page.showEquipmentModal = true
     },
 
     /**
      * 关闭设备弹窗。
      */
     closeEquipmentModal() {
-      if (this.equipmentSaving) {
+      if (page.equipmentSaving) {
         return
       }
-      this.showEquipmentModal = false
+      page.showEquipmentModal = false
     },
 
     /**
      * 打开新增管理员弹窗。
      */
     openCreateAdmin() {
-      this.adminForm = createDefaultAdminForm()
-      this.showAdminModal = true
+      page.adminForm = createDefaultAdminForm()
+      page.showAdminModal = true
     },
 
     /**
@@ -1333,7 +1328,7 @@ export default {
      * @param {Object} admin 管理员数据
      */
     openEditAdmin(admin) {
-      this.adminForm = {
+      page.adminForm = {
         id: admin.id,
         username: admin.username || '',
         nickname: admin.nickname || '',
@@ -1342,17 +1337,17 @@ export default {
         password: '',
         status: Number(admin.status)
       }
-      this.showAdminModal = true
+      page.showAdminModal = true
     },
 
     /**
      * 关闭管理员弹窗。
      */
     closeAdminModal() {
-      if (this.adminSaving) {
+      if (page.adminSaving) {
         return
       }
-      this.showAdminModal = false
+      page.showAdminModal = false
     },
 
     /**
@@ -1362,16 +1357,16 @@ export default {
     handleAdminStatusChange(event) {
       const index = Number(event.detail.value)
       const option = ADMIN_STATUS_OPTIONS[index]
-      this.adminForm.status = option ? option.value : 1
+      page.adminForm.status = option ? option.value : 1
     },
 
     /**
      * 提交管理员表单。
      */
     async submitAdminForm() {
-      const finalUsername = (this.adminForm.username || '').trim()
-      const finalPhone = (this.adminForm.phone || '').trim()
-      const finalPassword = (this.adminForm.password || '').trim()
+      const finalUsername = (page.adminForm.username || '').trim()
+      const finalPhone = (page.adminForm.phone || '').trim()
+      const finalPassword = (page.adminForm.password || '').trim()
 
       if (!finalUsername) {
         uni.showToast({ title: '请输入管理员用户名', icon: 'none' })
@@ -1381,33 +1376,33 @@ export default {
         uni.showToast({ title: '请输入手机号', icon: 'none' })
         return
       }
-      if (!this.adminForm.id && !finalPassword) {
+      if (!page.adminForm.id && !finalPassword) {
         uni.showToast({ title: '请输入登录密码', icon: 'none' })
         return
       }
-      if (this.adminSaving) {
+      if (page.adminSaving) {
         return
       }
 
       const payload = {
-        adminUserId: this.adminUserId,
+        adminUserId: page.adminUserId,
         username: finalUsername,
-        nickname: (this.adminForm.nickname || '').trim(),
+        nickname: (page.adminForm.nickname || '').trim(),
         phone: finalPhone,
-        email: (this.adminForm.email || '').trim(),
+        email: (page.adminForm.email || '').trim(),
         password: finalPassword,
-        status: Number(this.adminForm.status)
+        status: Number(page.adminForm.status)
       }
 
-      this.adminSaving = true
+      page.adminSaving = true
       try {
-        if (this.adminForm.id) {
+        if (page.adminForm.id) {
           await request({
-            url: `/api/admin/admin-users/${this.adminForm.id}`,
+            url: `/api/admin/admin-users/${page.adminForm.id}`,
             method: 'PUT',
             data: payload
           })
-          if (Number(this.adminForm.id) === Number(this.adminUserId)) {
+          if (Number(page.adminForm.id) === Number(page.adminUserId)) {
             const currentUserInfo = uni.getStorageSync('userInfo') || {}
             uni.setStorageSync('userInfo', {
               ...currentUserInfo,
@@ -1427,12 +1422,12 @@ export default {
           uni.showToast({ title: '新增成功', icon: 'success' })
         }
 
-        this.showAdminModal = false
-        await Promise.all([this.loadAdminList(), this.loadStats()])
+        page.showAdminModal = false
+        await Promise.all([page.loadAdminList(), page.loadStats()])
       } catch (error) {
         uni.showToast({ title: error.message || '保存失败', icon: 'none' })
       } finally {
-        this.adminSaving = false
+        page.adminSaving = false
       }
     },
 
@@ -1454,11 +1449,11 @@ export default {
               url: `/api/admin/admin-users/${admin.id}/delete`,
               method: 'POST',
               data: {
-                adminUserId: this.adminUserId
+                adminUserId: page.adminUserId
               }
             })
             uni.showToast({ title: '删除成功', icon: 'success' })
-            await Promise.all([this.loadAdminList(), this.loadStats()])
+            await Promise.all([page.loadAdminList(), page.loadStats()])
           } catch (error) {
             uni.showToast({ title: error.message || '删除失败', icon: 'none' })
           }
@@ -1473,36 +1468,36 @@ export default {
     handleEquipmentStatusChange(event) {
       const index = Number(event.detail.value)
       const option = EQUIPMENT_STATUS_OPTIONS[index]
-      this.equipmentForm.status = option ? option.value : 1
+      page.equipmentForm.status = option ? option.value : 1
     },
 
     /**
      * 提交设备表单。
      */
     async submitEquipmentForm() {
-      const finalName = (this.equipmentForm.name || '').trim()
+      const finalName = (page.equipmentForm.name || '').trim()
 
       if (!finalName) {
         uni.showToast({ title: '请输入设备名称', icon: 'none' })
         return
       }
-      if (this.equipmentSaving) {
+      if (page.equipmentSaving) {
         return
       }
 
       const payload = {
-        adminUserId: this.adminUserId,
+        adminUserId: page.adminUserId,
         name: finalName,
-        icon: (this.equipmentForm.icon || '').trim(),
-        description: (this.equipmentForm.description || '').trim(),
-        status: Number(this.equipmentForm.status)
+        icon: (page.equipmentForm.icon || '').trim(),
+        description: (page.equipmentForm.description || '').trim(),
+        status: Number(page.equipmentForm.status)
       }
 
-      this.equipmentSaving = true
+      page.equipmentSaving = true
       try {
-        if (this.equipmentForm.id) {
+        if (page.equipmentForm.id) {
           await request({
-            url: `/api/admin/equipments/${this.equipmentForm.id}`,
+            url: `/api/admin/equipments/${page.equipmentForm.id}`,
             method: 'PUT',
             data: payload
           })
@@ -1516,16 +1511,16 @@ export default {
           uni.showToast({ title: '新增成功', icon: 'success' })
         }
 
-        this.showEquipmentModal = false
+        page.showEquipmentModal = false
         await Promise.all([
-          this.loadEquipmentList(),
-          this.loadEquipmentOptions(),
-          this.loadMeetingRooms()
+          page.loadEquipmentList(),
+          page.loadEquipmentOptions(),
+          page.loadMeetingRooms()
         ])
       } catch (error) {
         uni.showToast({ title: error.message || '保存失败', icon: 'none' })
       } finally {
-        this.equipmentSaving = false
+        page.equipmentSaving = false
       }
     },
 
@@ -1547,14 +1542,14 @@ export default {
               url: `/api/admin/equipments/${equipment.id}/disable`,
               method: 'POST',
               data: {
-                adminUserId: this.adminUserId
+                adminUserId: page.adminUserId
               }
             })
             uni.showToast({ title: '停用成功', icon: 'success' })
             await Promise.all([
-              this.loadEquipmentList(),
-              this.loadEquipmentOptions(),
-              this.loadMeetingRooms()
+              page.loadEquipmentList(),
+              page.loadEquipmentOptions(),
+              page.loadMeetingRooms()
             ])
           } catch (error) {
             uni.showToast({ title: error.message || '停用失败', icon: 'none' })
@@ -1568,11 +1563,11 @@ export default {
      * @param {Number} equipmentId 设备ID
      */
     toggleRoomEquipment(equipmentId) {
-      const index = this.roomForm.equipmentIds.indexOf(equipmentId)
+      const index = page.roomForm.equipmentIds.indexOf(equipmentId)
       if (index >= 0) {
-        this.roomForm.equipmentIds.splice(index, 1)
+        page.roomForm.equipmentIds.splice(index, 1)
       } else {
-        this.roomForm.equipmentIds.push(equipmentId)
+        page.roomForm.equipmentIds.push(equipmentId)
       }
     },
 
@@ -1583,17 +1578,17 @@ export default {
     handleRoomStatusChange(event) {
       const index = Number(event.detail.value)
       const option = ROOM_STATUS_OPTIONS[index]
-      this.roomForm.status = option ? option.value : 1
+      page.roomForm.status = option ? option.value : 1
     },
 
     /**
      * 提交会议室表单。
      */
     async submitRoomForm() {
-      const finalName = (this.roomForm.name || '').trim()
-      const finalLocation = (this.roomForm.location || '').trim()
-      const finalCapacity = Number(this.roomForm.capacity)
-      const finalSortOrder = Number(this.roomForm.sortOrder || 0)
+      const finalName = (page.roomForm.name || '').trim()
+      const finalLocation = (page.roomForm.location || '').trim()
+      const finalCapacity = Number(page.roomForm.capacity)
+      const finalSortOrder = Number(page.roomForm.sortOrder || 0)
 
       if (!finalName) {
         uni.showToast({ title: '请输入会议室名称', icon: 'none' })
@@ -1607,33 +1602,33 @@ export default {
         uni.showToast({ title: '请输入会议室位置', icon: 'none' })
         return
       }
-      if (this.roomSaving) {
+      if (page.roomSaving) {
         return
       }
-      if (this.roomCoverUploading) {
+      if (page.roomCoverUploading) {
         uni.showToast({ title: '封面图上传中，请稍候', icon: 'none' })
         return
       }
 
       const payload = {
-        adminUserId: this.adminUserId,
+        adminUserId: page.adminUserId,
         name: finalName,
         capacity: finalCapacity,
         location: finalLocation,
-        building: (this.roomForm.building || '').trim(),
-        floor: (this.roomForm.floor || '').trim(),
-        description: (this.roomForm.description || '').trim(),
-        coverImage: (this.roomForm.coverImage || '').trim(),
-        status: Number(this.roomForm.status),
+        building: (page.roomForm.building || '').trim(),
+        floor: (page.roomForm.floor || '').trim(),
+        description: (page.roomForm.description || '').trim(),
+        coverImage: (page.roomForm.coverImage || '').trim(),
+        status: Number(page.roomForm.status),
         sortOrder: Number.isNaN(finalSortOrder) ? 0 : finalSortOrder,
-        equipmentIds: this.roomForm.equipmentIds
+        equipmentIds: page.roomForm.equipmentIds
       }
 
-      this.roomSaving = true
+      page.roomSaving = true
       try {
-        if (this.roomForm.id) {
+        if (page.roomForm.id) {
           await request({
-            url: `/api/admin/meeting-rooms/${this.roomForm.id}`,
+            url: `/api/admin/meeting-rooms/${page.roomForm.id}`,
             method: 'PUT',
             data: payload
           })
@@ -1647,12 +1642,12 @@ export default {
           uni.showToast({ title: '新增成功', icon: 'success' })
         }
 
-        this.showRoomModal = false
-        await Promise.all([this.loadMeetingRooms(), this.loadStats()])
+        page.showRoomModal = false
+        await Promise.all([page.loadMeetingRooms(), page.loadStats()])
       } catch (error) {
         uni.showToast({ title: error.message || '保存失败', icon: 'none' })
       } finally {
-        this.roomSaving = false
+        page.roomSaving = false
       }
     },
 
@@ -1674,11 +1669,11 @@ export default {
               url: `/api/admin/meeting-rooms/${room.id}/disable`,
               method: 'POST',
               data: {
-                adminUserId: this.adminUserId
+                adminUserId: page.adminUserId
               }
             })
             uni.showToast({ title: '停用成功', icon: 'success' })
-            await Promise.all([this.loadMeetingRooms(), this.loadStats()])
+            await Promise.all([page.loadMeetingRooms(), page.loadStats()])
           } catch (error) {
             uni.showToast({ title: error.message || '停用失败', icon: 'none' })
           }
@@ -1692,9 +1687,9 @@ export default {
      */
     handleEmergencyRoomChange(event) {
       const index = Number(event.detail.value)
-      const option = this.emergencyRoomOptions[index]
+      const option = page.emergencyRoomOptions[index]
       if (option) {
-        this.emergencyForm.roomId = option.value
+        page.emergencyForm.roomId = option.value
       }
     },
 
@@ -1703,7 +1698,7 @@ export default {
      * @param {Object} event picker事件
      */
     handleEmergencyDateChange(event) {
-      this.emergencyForm.reservationDate = event.detail.value
+      page.emergencyForm.reservationDate = event.detail.value
     },
 
     /**
@@ -1711,7 +1706,7 @@ export default {
      * @param {Object} event picker事件
      */
     handleEmergencyStartTimeChange(event) {
-      this.emergencyForm.startTime = event.detail.value
+      page.emergencyForm.startTime = event.detail.value
     },
 
     /**
@@ -1719,7 +1714,7 @@ export default {
      * @param {Object} event picker事件
      */
     handleEmergencyEndTimeChange(event) {
-      this.emergencyForm.endTime = event.detail.value
+      page.emergencyForm.endTime = event.detail.value
     },
 
     /**
@@ -1727,60 +1722,60 @@ export default {
      * @param {Object} event switch事件
      */
     handleForceOverrideChange(event) {
-      this.emergencyForm.forceOverride = !!event.detail.value
+      page.emergencyForm.forceOverride = !!event.detail.value
     },
 
     /**
      * 提交紧急占用。
      */
     async submitEmergencyOccupy() {
-      if (!this.emergencyForm.roomId) {
+      if (!page.emergencyForm.roomId) {
         uni.showToast({ title: '请选择会议室', icon: 'none' })
         return
       }
-      if (!this.emergencyForm.reservationDate) {
+      if (!page.emergencyForm.reservationDate) {
         uni.showToast({ title: '请选择占用日期', icon: 'none' })
         return
       }
-      if (!this.emergencyForm.startTime || !this.emergencyForm.endTime) {
+      if (!page.emergencyForm.startTime || !page.emergencyForm.endTime) {
         uni.showToast({ title: '请选择占用时段', icon: 'none' })
         return
       }
-      if (this.emergencyForm.startTime >= this.emergencyForm.endTime) {
+      if (page.emergencyForm.startTime >= page.emergencyForm.endTime) {
         uni.showToast({ title: '开始时间必须早于结束时间', icon: 'none' })
         return
       }
-      if (this.isStartedTimeSlot(this.emergencyForm.reservationDate, this.emergencyForm.startTime)) {
+      if (page.isStartedTimeSlot(page.emergencyForm.reservationDate, page.emergencyForm.startTime)) {
         uni.showToast({ title: '今天已开始的时段不可紧急占用', icon: 'none' })
         return
       }
-      if (!(this.emergencyForm.title || '').trim()) {
+      if (!(page.emergencyForm.title || '').trim()) {
         uni.showToast({ title: '请输入占用主题', icon: 'none' })
         return
       }
-      if (!(this.emergencyForm.purpose || '').trim()) {
+      if (!(page.emergencyForm.purpose || '').trim()) {
         uni.showToast({ title: '请输入占用说明', icon: 'none' })
         return
       }
-      if (this.emergencySubmitting) {
+      if (page.emergencySubmitting) {
         return
       }
 
-      this.emergencySubmitting = true
+      page.emergencySubmitting = true
       try {
         const result = await request({
           url: '/api/admin/reservations/emergency-occupy',
           method: 'POST',
           data: {
-            adminUserId: this.adminUserId,
-            roomId: this.emergencyForm.roomId,
-            reservationDate: this.emergencyForm.reservationDate,
-            startTime: `${this.emergencyForm.startTime}:00`,
-            endTime: `${this.emergencyForm.endTime}:00`,
-            title: (this.emergencyForm.title || '').trim(),
-            purpose: (this.emergencyForm.purpose || '').trim(),
-            forceOverride: this.emergencyForm.forceOverride,
-            cancelReason: (this.emergencyForm.cancelReason || '').trim()
+            adminUserId: page.adminUserId,
+            roomId: page.emergencyForm.roomId,
+            reservationDate: page.emergencyForm.reservationDate,
+            startTime: `${page.emergencyForm.startTime}:00`,
+            endTime: `${page.emergencyForm.endTime}:00`,
+            title: (page.emergencyForm.title || '').trim(),
+            purpose: (page.emergencyForm.purpose || '').trim(),
+            forceOverride: page.emergencyForm.forceOverride,
+            cancelReason: (page.emergencyForm.cancelReason || '').trim()
           }
         })
 
@@ -1795,17 +1790,17 @@ export default {
           content: lines.join('\n'),
           showCancel: false
         })
-        await Promise.all([this.loadPendingReservations(), this.loadStats()])
+        await Promise.all([page.loadPendingReservations(), page.loadStats()])
       } catch (error) {
         const message = error.message || '提交失败'
         // 未开启强制协调时若存在冲突，引导管理员一键切换为强制模式。
-        if (!this.emergencyForm.forceOverride && message.includes('冲突预约')) {
+        if (!page.emergencyForm.forceOverride && message.includes('冲突预约')) {
           uni.showModal({
             title: '检测到冲突',
             content: `${message}\n是否开启强制协调并重新提交？`,
             success: (res) => {
               if (res.confirm) {
-                this.emergencyForm.forceOverride = true
+                page.emergencyForm.forceOverride = true
               }
             }
           })
@@ -1813,7 +1808,7 @@ export default {
           uni.showToast({ title: message, icon: 'none' })
         }
       } finally {
-        this.emergencySubmitting = false
+        page.emergencySubmitting = false
       }
     },
 
@@ -1887,7 +1882,7 @@ export default {
      * @returns {Boolean}
      */
     isStartedTimeSlot(dateText, startTime) {
-      return dateText === this.formatDate(new Date()) && startTime <= this.currentTimeText()
+      return dateText === page.formatDate(new Date()) && startTime <= page.currentTimeText()
     },
 
     /**
@@ -1931,8 +1926,98 @@ export default {
         }
       })
     }
-  }
-}
+})
+
+onLoad(() => page.onLoad())
+
+const {
+  activeTab,
+  adminUserId,
+  reviewLoading,
+  reviewingId,
+  pendingReservations,
+  roomLoading,
+  roomList,
+  equipmentOptions,
+  showRoomModal,
+  roomSaving,
+  roomCoverUploading,
+  roomForm,
+  equipmentLoading,
+  equipmentList,
+  showEquipmentModal,
+  equipmentSaving,
+  equipmentForm,
+  adminLoading,
+  adminList,
+  showAdminModal,
+  adminSaving,
+  adminForm,
+  statsLoading,
+  stats,
+  emergencySubmitting,
+  emergencyForm,
+  minDate,
+  roomStatusLabels,
+  roomStatusIndex,
+  equipmentStatusLabels,
+  equipmentStatusIndex,
+  adminStatusLabels,
+  adminStatusIndex,
+  emergencyRoomOptions,
+  emergencyRoomIndex,
+  emergencyRoomLabel,
+  goToCalendar,
+  ensureAdminLogin,
+  loadAllData,
+  switchTab,
+  refreshCurrentTab,
+  loadPendingReservations,
+  handleReview,
+  loadMeetingRooms,
+  loadEquipmentList,
+  loadEquipmentOptions,
+  loadAdminList,
+  loadStats,
+  openCreateRoom,
+  openEditRoom,
+  closeRoomModal,
+  displayCoverImage,
+  chooseRoomCoverImage,
+  clearRoomCoverImage,
+  openCreateEquipment,
+  openEditEquipment,
+  closeEquipmentModal,
+  openCreateAdmin,
+  openEditAdmin,
+  closeAdminModal,
+  handleAdminStatusChange,
+  submitAdminForm,
+  deleteAdmin,
+  handleEquipmentStatusChange,
+  submitEquipmentForm,
+  disableEquipment,
+  toggleRoomEquipment,
+  handleRoomStatusChange,
+  submitRoomForm,
+  disableRoom,
+  handleEmergencyRoomChange,
+  handleEmergencyDateChange,
+  handleEmergencyStartTimeChange,
+  handleEmergencyEndTimeChange,
+  handleForceOverrideChange,
+  submitEmergencyOccupy,
+  roomStatusClass,
+  equipmentStatusClass,
+  roomStatusText,
+  equipmentStatusText,
+  adminStatusClass,
+  adminStatusText,
+  isStartedTimeSlot,
+  currentTimeText,
+  formatDate,
+  handleLogout
+} = toRefs(page)
 </script>
 
 <style scoped>
@@ -2223,6 +2308,14 @@ export default {
 
 .form-item.column {
   display: block;
+}
+
+.form-tip {
+  display: block;
+  margin: -8rpx 20rpx 20rpx;
+  color: #888;
+  font-size: 24rpx;
+  line-height: 34rpx;
 }
 
 .label {

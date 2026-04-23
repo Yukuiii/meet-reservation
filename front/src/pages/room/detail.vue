@@ -103,356 +103,369 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { computed, reactive, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { buildAssetUrl, request } from '../../utils/request'
 
 const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
 
 /**
- * 会议室详情页
- * @description 展示会议室详细信息，支持查看占用状态和提交预约
+ * 会议室ID。
  */
-export default {
-  data() {
-    return {
-      // 会议室ID
-      roomId: null,
-      // 会议室信息
-      roomInfo: {
-        id: null,
-        name: '',
-        capacity: 0,
-        location: '',
-        image: buildAssetUrl(DEFAULT_ROOM_IMAGE),
-        equipment: [],
-        status: 'available',
-        statusText: '可预约',
-        description: ''
-      },
-      // 预约日期
-      selectedDate: '',
-      // 最小可预约日期
-      minDate: '',
-      // 时间段列表
-      timeSlots: [],
-      // 预约表单
-      bookingForm: {
-        reason: '',
-        attendees: ''
-      },
-      // 占用状态加载中
-      scheduleLoading: false,
-      // 提交中
-      submitting: false
+const roomId = ref(null)
+
+/**
+ * 会议室信息。
+ */
+const roomInfo = ref({
+  id: null,
+  name: '',
+  capacity: 0,
+  location: '',
+  image: buildAssetUrl(DEFAULT_ROOM_IMAGE),
+  equipment: [],
+  status: 'available',
+  statusText: '可预约',
+  description: ''
+})
+
+/**
+ * 预约日期。
+ */
+const selectedDate = ref('')
+
+/**
+ * 最小可预约日期。
+ */
+const minDate = ref('')
+
+/**
+ * 时间段列表。
+ */
+const timeSlots = ref([])
+
+/**
+ * 预约表单。
+ */
+const bookingForm = reactive({
+  reason: '',
+  attendees: ''
+})
+
+/**
+ * 占用状态加载中。
+ */
+const scheduleLoading = ref(false)
+
+/**
+ * 提交中。
+ */
+const submitting = ref(false)
+
+/**
+ * 已选择的时间段（按索引升序）。
+ * @returns {Array}
+ */
+const selectedSlots = computed(() =>
+  timeSlots.value
+    .map((slot, index) => ({ ...slot, index }))
+    .filter(slot => slot.selected)
+    .sort((a, b) => a.index - b.index)
+)
+
+/**
+ * 已选择时段文案。
+ * @returns {String}
+ */
+const selectedTimeText = computed(() => {
+  if (selectedSlots.value.length === 0) {
+    return ''
+  }
+  const start = selectedSlots.value[0].start
+  const end = selectedSlots.value[selectedSlots.value.length - 1].end
+  return `${start}-${end}`
+})
+
+/**
+ * 页面初始化。
+ * @param {Object} options 页面参数
+ */
+onLoad(async (options) => {
+  if (!options.id) {
+    uni.showToast({ title: '会议室参数错误', icon: 'none' })
+    return
+  }
+
+  roomId.value = Number(options.id)
+  const today = formatDate(new Date())
+  selectedDate.value = today
+  minDate.value = today
+  timeSlots.value = createDefaultTimeSlots()
+
+  await loadRoomDetail()
+  await loadRoomSchedule()
+})
+
+/**
+ * 创建默认时间段。
+ * @returns {Array}
+ */
+function createDefaultTimeSlots() {
+  const templates = [
+    ['08:00', '09:00'],
+    ['09:00', '10:00'],
+    ['10:00', '11:00'],
+    ['11:00', '12:00'],
+    ['13:00', '14:00'],
+    ['14:00', '15:00'],
+    ['15:00', '16:00'],
+    ['16:00', '17:00'],
+    ['17:00', '18:00']
+  ]
+
+  return templates.map(item => ({
+    start: item[0],
+    end: item[1],
+    time: `${item[0]}-${item[1]}`,
+    booked: false,
+    selected: false
+  }))
+}
+
+/**
+ * 加载会议室详情。
+ */
+async function loadRoomDetail() {
+  try {
+    const room = await request({
+      url: `/api/meeting-rooms/${roomId.value}`,
+      method: 'GET'
+    })
+
+    roomInfo.value = {
+      id: room.id,
+      name: room.name || '',
+      capacity: room.capacity || 0,
+      location: room.location || '',
+      image: buildAssetUrl(room.image || DEFAULT_ROOM_IMAGE),
+      equipment: Array.isArray(room.equipment) ? room.equipment : [],
+      status: room.status || 'available',
+      statusText: room.statusText || '可预约',
+      description: room.description || ''
     }
-  },
+  } catch (error) {
+    uni.showToast({ title: error.message || '会议室加载失败', icon: 'none' })
+  }
+}
 
-  computed: {
-    /**
-     * 已选择的时间段（按索引升序）。
-     * @returns {Array}
-     */
-    selectedSlots() {
-      return this.timeSlots
-        .map((slot, index) => ({ ...slot, index }))
-        .filter(slot => slot.selected)
-        .sort((a, b) => a.index - b.index)
-    },
+/**
+ * 加载指定日期的占用状态。
+ */
+async function loadRoomSchedule() {
+  scheduleLoading.value = true
+  try {
+    const scheduleList = await request({
+      url: `/api/reservations/schedule?roomId=${roomId.value}&date=${selectedDate.value}`,
+      method: 'GET'
+    })
 
-    /**
-     * 已选择时段文案。
-     * @returns {String}
-     */
-    selectedTimeText() {
-      if (this.selectedSlots.length === 0) {
-        return ''
+    syncSlotBookedState(Array.isArray(scheduleList) ? scheduleList : [])
+  } catch (error) {
+    uni.showToast({ title: error.message || '占用状态加载失败', icon: 'none' })
+    syncSlotBookedState([])
+  } finally {
+    scheduleLoading.value = false
+  }
+}
+
+/**
+ * 将后端占用时段映射到前端时间块。
+ * @param {Array} scheduleList 占用时段列表
+ */
+function syncSlotBookedState(scheduleList) {
+  const nextSlots = createDefaultTimeSlots()
+
+  // 任一占用区间与当前时间块有重叠，即视为该时间块不可预约。
+  nextSlots.forEach(slot => {
+    slot.booked = scheduleList.some(item =>
+      isTimeOverlap(slot.start, slot.end, item.startTime, item.endTime)
+    )
+  })
+
+  timeSlots.value = nextSlots
+}
+
+/**
+ * 判断两个时间区间是否重叠。
+ * @param {String} startA 区间A开始 HH:mm
+ * @param {String} endA 区间A结束 HH:mm
+ * @param {String} startB 区间B开始 HH:mm
+ * @param {String} endB 区间B结束 HH:mm
+ * @returns {Boolean}
+ */
+function isTimeOverlap(startA, endA, startB, endB) {
+  return startA < endB && endA > startB
+}
+
+/**
+ * 切换预约日期。
+ * @param {Object} event 日期选择事件
+ */
+async function handleDateChange(event) {
+  selectedDate.value = event.detail.value
+  bookingForm.reason = ''
+  bookingForm.attendees = ''
+  await loadRoomSchedule()
+}
+
+/**
+ * 选择时间段。
+ * @param {Number} index 时间段索引
+ */
+function selectTimeSlot(index) {
+  const slot = timeSlots.value[index]
+  if (slot.booked) {
+    uni.showToast({ title: '该时段已被占用', icon: 'none' })
+    return
+  }
+  if (isStartedTimeSlot(selectedDate.value, slot.start)) {
+    uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
+    return
+  }
+  slot.selected = !slot.selected
+}
+
+/**
+ * 提交预约。
+ */
+async function submitBooking() {
+  if (selectedSlots.value.length === 0) {
+    uni.showToast({ title: '请选择预约时段', icon: 'none' })
+    return
+  }
+
+  if (!isSelectedSlotsContinuous()) {
+    uni.showToast({ title: '请选择连续的预约时段', icon: 'none' })
+    return
+  }
+
+  const reason = bookingForm.reason.trim()
+  if (!reason) {
+    uni.showToast({ title: '请输入预约事由', icon: 'none' })
+    return
+  }
+
+  const attendees = Number(bookingForm.attendees)
+  if (!Number.isInteger(attendees) || attendees <= 0) {
+    uni.showToast({ title: '参与人数需为正整数', icon: 'none' })
+    return
+  }
+  if (attendees > roomInfo.value.capacity) {
+    uni.showToast({
+      title: `参与人数不能超过会议室容量(${roomInfo.value.capacity}人)`,
+      icon: 'none'
+    })
+    return
+  }
+
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  if (!userInfo.id) {
+    uni.showToast({ title: '请先登录后再预约', icon: 'none' })
+    setTimeout(() => {
+      uni.reLaunch({ url: '/pages/login/index' })
+    }, 600)
+    return
+  }
+
+  if (submitting.value) {
+    return
+  }
+
+  const startTime = selectedSlots.value[0].start
+  const endTime = selectedSlots.value[selectedSlots.value.length - 1].end
+  if (isStartedTimeSlot(selectedDate.value, startTime)) {
+    uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
+    return
+  }
+
+  submitting.value = true
+  try {
+    await request({
+      url: '/api/reservations',
+      method: 'POST',
+      data: {
+        userId: userInfo.id,
+        roomId: roomId.value,
+        title: reason,
+        purpose: reason,
+        attendeeCount: attendees,
+        reservationDate: selectedDate.value,
+        startTime: `${startTime}:00`,
+        endTime: `${endTime}:00`
       }
-      const start = this.selectedSlots[0].start
-      const end = this.selectedSlots[this.selectedSlots.length - 1].end
-      return `${start}-${end}`
-    }
-  },
+    })
 
-  /**
-   * 页面初始化。
-   * @param {Object} options 页面参数
-   */
-  async onLoad(options) {
-    if (!options.id) {
-      uni.showToast({ title: '会议室参数错误', icon: 'none' })
-      return
-    }
+    uni.showToast({ title: '预约提交成功', icon: 'success' })
+    bookingForm.reason = ''
+    bookingForm.attendees = ''
+    await loadRoomSchedule()
+  } catch (error) {
+    uni.showToast({ title: error.message || '预约提交失败', icon: 'none' })
+  } finally {
+    submitting.value = false
+  }
+}
 
-    this.roomId = Number(options.id)
-    const today = this.formatDate(new Date())
-    this.selectedDate = today
-    this.minDate = today
-    this.timeSlots = this.createDefaultTimeSlots()
+/**
+ * 判断选择时段是否连续。
+ * @returns {Boolean}
+ */
+function isSelectedSlotsContinuous() {
+  if (selectedSlots.value.length <= 1) {
+    return true
+  }
 
-    await this.loadRoomDetail()
-    await this.loadRoomSchedule()
-  },
-
-  methods: {
-    /**
-     * 创建默认时间段。
-     * @returns {Array}
-     */
-    createDefaultTimeSlots() {
-      const templates = [
-        ['08:00', '09:00'],
-        ['09:00', '10:00'],
-        ['10:00', '11:00'],
-        ['11:00', '12:00'],
-        ['13:00', '14:00'],
-        ['14:00', '15:00'],
-        ['15:00', '16:00'],
-        ['16:00', '17:00'],
-        ['17:00', '18:00']
-      ]
-
-      return templates.map(item => ({
-        start: item[0],
-        end: item[1],
-        time: `${item[0]}-${item[1]}`,
-        booked: false,
-        selected: false
-      }))
-    },
-
-    /**
-     * 加载会议室详情。
-     */
-    async loadRoomDetail() {
-      try {
-        const room = await request({
-          url: `/api/meeting-rooms/${this.roomId}`,
-          method: 'GET'
-        })
-
-        this.roomInfo = {
-          id: room.id,
-          name: room.name || '',
-          capacity: room.capacity || 0,
-          location: room.location || '',
-          image: buildAssetUrl(room.image || DEFAULT_ROOM_IMAGE),
-          equipment: Array.isArray(room.equipment) ? room.equipment : [],
-          status: room.status || 'available',
-          statusText: room.statusText || '可预约',
-          description: room.description || ''
-        }
-      } catch (error) {
-        uni.showToast({ title: error.message || '会议室加载失败', icon: 'none' })
-      }
-    },
-
-    /**
-     * 加载指定日期的占用状态。
-     */
-    async loadRoomSchedule() {
-      this.scheduleLoading = true
-      try {
-        const scheduleList = await request({
-          url: `/api/reservations/schedule?roomId=${this.roomId}&date=${this.selectedDate}`,
-          method: 'GET'
-        })
-
-        this.syncSlotBookedState(Array.isArray(scheduleList) ? scheduleList : [])
-      } catch (error) {
-        uni.showToast({ title: error.message || '占用状态加载失败', icon: 'none' })
-        this.syncSlotBookedState([])
-      } finally {
-        this.scheduleLoading = false
-      }
-    },
-
-    /**
-     * 将后端占用时段映射到前端时间块。
-     * @param {Array} scheduleList 占用时段列表
-     */
-    syncSlotBookedState(scheduleList) {
-      const nextSlots = this.createDefaultTimeSlots()
-
-      // 任一占用区间与当前时间块有重叠，即视为该时间块不可预约。
-      nextSlots.forEach(slot => {
-        slot.booked = scheduleList.some(item =>
-          this.isTimeOverlap(slot.start, slot.end, item.startTime, item.endTime)
-        )
-      })
-
-      this.timeSlots = nextSlots
-    },
-
-    /**
-     * 判断两个时间区间是否重叠。
-     * @param {String} startA 区间A开始 HH:mm
-     * @param {String} endA 区间A结束 HH:mm
-     * @param {String} startB 区间B开始 HH:mm
-     * @param {String} endB 区间B结束 HH:mm
-     * @returns {Boolean}
-     */
-    isTimeOverlap(startA, endA, startB, endB) {
-      return startA < endB && endA > startB
-    },
-
-    /**
-     * 切换预约日期。
-     * @param {Object} event 日期选择事件
-     */
-    async handleDateChange(event) {
-      this.selectedDate = event.detail.value
-      this.bookingForm = { reason: '', attendees: '' }
-      await this.loadRoomSchedule()
-    },
-
-    /**
-     * 选择时间段。
-     * @param {Number} index 时间段索引
-     */
-    selectTimeSlot(index) {
-      const slot = this.timeSlots[index]
-      if (slot.booked) {
-        uni.showToast({ title: '该时段已被占用', icon: 'none' })
-        return
-      }
-      if (this.isStartedTimeSlot(this.selectedDate, slot.start)) {
-        uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
-        return
-      }
-      slot.selected = !slot.selected
-    },
-
-    /**
-     * 提交预约。
-     */
-    async submitBooking() {
-      if (this.selectedSlots.length === 0) {
-        uni.showToast({ title: '请选择预约时段', icon: 'none' })
-        return
-      }
-
-      if (!this.isSelectedSlotsContinuous()) {
-        uni.showToast({ title: '请选择连续的预约时段', icon: 'none' })
-        return
-      }
-
-      const reason = this.bookingForm.reason.trim()
-      if (!reason) {
-        uni.showToast({ title: '请输入预约事由', icon: 'none' })
-        return
-      }
-
-      const attendees = Number(this.bookingForm.attendees)
-      if (!Number.isInteger(attendees) || attendees <= 0) {
-        uni.showToast({ title: '参与人数需为正整数', icon: 'none' })
-        return
-      }
-      if (attendees > this.roomInfo.capacity) {
-        uni.showToast({
-          title: `参与人数不能超过会议室容量(${this.roomInfo.capacity}人)`,
-          icon: 'none'
-        })
-        return
-      }
-
-      const userInfo = uni.getStorageSync('userInfo') || {}
-      if (!userInfo.id) {
-        uni.showToast({ title: '请先登录后再预约', icon: 'none' })
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/login/index' })
-        }, 600)
-        return
-      }
-
-      if (this.submitting) {
-        return
-      }
-
-      const startTime = this.selectedSlots[0].start
-      const endTime = this.selectedSlots[this.selectedSlots.length - 1].end
-      if (this.isStartedTimeSlot(this.selectedDate, startTime)) {
-        uni.showToast({ title: '今天已开始的时段不可预约', icon: 'none' })
-        return
-      }
-
-      this.submitting = true
-      try {
-        await request({
-          url: '/api/reservations',
-          method: 'POST',
-          data: {
-            userId: userInfo.id,
-            roomId: this.roomId,
-            title: reason,
-            purpose: reason,
-            attendeeCount: attendees,
-            reservationDate: this.selectedDate,
-            startTime: `${startTime}:00`,
-            endTime: `${endTime}:00`
-          }
-        })
-
-        uni.showToast({ title: '预约提交成功', icon: 'success' })
-        this.bookingForm = { reason: '', attendees: '' }
-        await this.loadRoomSchedule()
-      } catch (error) {
-        uni.showToast({ title: error.message || '预约提交失败', icon: 'none' })
-      } finally {
-        this.submitting = false
-      }
-    },
-
-    /**
-     * 判断选择时段是否连续。
-     * @returns {Boolean}
-     */
-    isSelectedSlotsContinuous() {
-      if (this.selectedSlots.length <= 1) {
-        return true
-      }
-
-      // 若索引不是连续递增，则代表中间有未选时段。
-      for (let i = 1; i < this.selectedSlots.length; i += 1) {
-        if (this.selectedSlots[i].index !== this.selectedSlots[i - 1].index + 1) {
-          return false
-        }
-      }
-      return true
-    },
-
-    /**
-     * 判断时段是否已经达到开始时间。
-     * @param {String} dateText 日期字符串
-     * @param {String} startTime 开始时间 HH:mm
-     * @returns {Boolean}
-     */
-    isStartedTimeSlot(dateText, startTime) {
-      return dateText === this.formatDate(new Date()) && startTime <= this.currentTimeText()
-    },
-
-    /**
-     * 获取当前时间字符串。
-     * @returns {String}
-     */
-    currentTimeText() {
-      const now = new Date()
-      const hour = `${now.getHours()}`.padStart(2, '0')
-      const minute = `${now.getMinutes()}`.padStart(2, '0')
-      return `${hour}:${minute}`
-    },
-
-    /**
-     * 日期格式化为 yyyy-MM-dd。
-     * @param {Date} date 日期对象
-     * @returns {String}
-     */
-    formatDate(date) {
-      const year = date.getFullYear()
-      const month = `${date.getMonth() + 1}`.padStart(2, '0')
-      const day = `${date.getDate()}`.padStart(2, '0')
-      return `${year}-${month}-${day}`
+  // 若索引不是连续递增，则代表中间有未选时段。
+  for (let i = 1; i < selectedSlots.value.length; i += 1) {
+    if (selectedSlots.value[i].index !== selectedSlots.value[i - 1].index + 1) {
+      return false
     }
   }
+  return true
+}
+
+/**
+ * 判断时段是否已经达到开始时间。
+ * @param {String} dateText 日期字符串
+ * @param {String} startTime 开始时间 HH:mm
+ * @returns {Boolean}
+ */
+function isStartedTimeSlot(dateText, startTime) {
+  return dateText === formatDate(new Date()) && startTime <= currentTimeText()
+}
+
+/**
+ * 获取当前时间字符串。
+ * @returns {String}
+ */
+function currentTimeText() {
+  const now = new Date()
+  const hour = `${now.getHours()}`.padStart(2, '0')
+  const minute = `${now.getMinutes()}`.padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+/**
+ * 日期格式化为 yyyy-MM-dd。
+ * @param {Date} date 日期对象
+ * @returns {String}
+ */
+function formatDate(date) {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 </script>
 

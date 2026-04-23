@@ -55,108 +55,102 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { reactive, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { request } from '../../utils/request'
 
 /**
- * 登录页面
- * @description 支持用户登录和管理员登录
+ * 表单数据。
  */
-export default {
-  data() {
-    return {
-      // 表单数据
-      formData: {
-        username: '',
-        password: '',
-        loginType: 'user'
-      },
-      // 提交状态
-      loading: false
-    }
-  },
+const formData = reactive({
+  username: '',
+  password: '',
+  loginType: 'user'
+})
 
-  /**
-   * 页面加载时回填用户名。
-   * @param {Object} options 页面参数
-   */
-  onLoad(options) {
-    if (options && options.username) {
-      this.formData.username = decodeURIComponent(options.username)
-    }
-  },
+/**
+ * 提交状态。
+ */
+const loading = ref(false)
 
-  methods: {
-    /**
-     * 切换登录类型。
-     * @param {String} loginType 登录类型
-     */
-    switchLoginType(loginType) {
-      if (this.loading) {
-        return
-      }
-      this.formData.loginType = loginType
-    },
-
-    /**
-     * 处理登录逻辑
-     * @description 验证表单并提交登录请求
-     */
-    async handleLogin() {
-      const { username, password, loginType } = this.formData
-      const finalUsername = username.trim()
-      const finalPassword = password.trim()
-
-      if (!finalUsername) {
-        uni.showToast({ title: '请输入用户名', icon: 'none' })
-        return
-      }
-      if (!finalPassword) {
-        uni.showToast({ title: '请输入密码', icon: 'none' })
-        return
-      }
-      if (this.loading) {
-        return
-      }
-
-      this.loading = true
-      try {
-        const data = await request({
-          url: '/api/auth/login',
-          method: 'POST',
-          data: {
-            username: finalUsername,
-            password: finalPassword,
-            loginType
-          }
-        })
-
-        uni.setStorageSync('token', data.token)
-        uni.setStorageSync('userInfo', data.userInfo || {})
-        uni.setStorageSync('loginType', loginType)
-
-        uni.showToast({ title: '登录成功', icon: 'success' })
-        setTimeout(() => {
-          if (loginType === 'admin') {
-            uni.reLaunch({ url: '/pages/admin/index' })
-          } else {
-            uni.reLaunch({ url: '/pages/index/index' })
-          }
-        }, 800)
-      } catch (error) {
-        uni.showToast({ title: error.message || '登录失败', icon: 'none' })
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /**
-     * 跳转到注册页面
-     */
-    goToRegister() {
-      uni.navigateTo({ url: '/pages/register/index' })
-    }
+/**
+ * 页面加载时回填用户名。
+ * @param {Object} options 页面参数
+ */
+onLoad((options) => {
+  if (options && options.username) {
+    formData.username = decodeURIComponent(options.username)
   }
+})
+
+/**
+ * 切换登录类型。
+ * @param {String} loginType 登录类型
+ */
+function switchLoginType(loginType) {
+  if (loading.value) {
+    return
+  }
+  formData.loginType = loginType
+}
+
+/**
+ * 处理登录逻辑。
+ */
+async function handleLogin() {
+  const { username, password, loginType } = formData
+  const finalUsername = username.trim()
+  const finalPassword = password.trim()
+
+  if (!finalUsername) {
+    uni.showToast({ title: '请输入用户名', icon: 'none' })
+    return
+  }
+  if (!finalPassword) {
+    uni.showToast({ title: '请输入密码', icon: 'none' })
+    return
+  }
+  if (loading.value) {
+    return
+  }
+
+  loading.value = true
+  try {
+    const data = await request({
+      url: '/api/auth/login',
+      method: 'POST',
+      data: {
+        username: finalUsername,
+        password: finalPassword,
+        loginType
+      }
+    })
+
+    uni.setStorageSync('token', data.token)
+    uni.setStorageSync('userInfo', data.userInfo || {})
+    uni.setStorageSync('loginType', loginType)
+
+    uni.showToast({ title: '登录成功', icon: 'success' })
+    setTimeout(() => {
+      if (loginType === 'admin') {
+        uni.reLaunch({ url: '/pages/admin/index' })
+      } else {
+        uni.reLaunch({ url: '/pages/index/index' })
+      }
+    }, 800)
+  } catch (error) {
+    uni.showToast({ title: error.message || '登录失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 跳转到注册页面。
+ */
+function goToRegister() {
+  uni.navigateTo({ url: '/pages/register/index' })
 }
 </script>
 

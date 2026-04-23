@@ -12,6 +12,7 @@ import com.example.backend.mapper.MeetingRoomMapper;
 import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
+import com.example.backend.service.NotificationService;
 import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.service.support.UserAccountSupport;
 import com.example.backend.vo.AdminReservationVO;
@@ -62,6 +63,9 @@ class AdminServiceImplTest {
     @Mock
     private ReservationStatusManager reservationStatusManager;
 
+    @Mock
+    private NotificationService notificationService;
+
     private AdminServiceImpl adminService;
 
     /**
@@ -75,7 +79,8 @@ class AdminServiceImplTest {
                 meetingRoomMapper,
                 roomEquipmentMapper,
                 equipmentMapper,
-                reservationStatusManager
+                reservationStatusManager,
+                notificationService
         );
     }
 

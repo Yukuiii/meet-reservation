@@ -47,6 +47,7 @@ import com.example.backend.mapper.ReservationMapper;
 import com.example.backend.mapper.RoomEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
 import com.example.backend.service.AdminService;
+import com.example.backend.service.NotificationService;
 import com.example.backend.service.support.ReservationStatusManager;
 import com.example.backend.service.support.UserAccountSupport;
 import com.example.backend.vo.AdminEmergencyOccupyVO;
@@ -137,6 +138,21 @@ public class AdminServiceImpl implements AdminService {
     private static final String DEFAULT_EMERGENCY_CANCEL_REASON = "因管理员紧急占用，原预约已协调取消";
 
     /**
+     * 通知类型：紧急占用取消。
+     */
+    private static final int NOTIFICATION_TYPE_EMERGENCY_CANCEL = 1;
+
+    /**
+     * 通知类型：审核通过。
+     */
+    private static final int NOTIFICATION_TYPE_REVIEW_APPROVED = 2;
+
+    /**
+     * 通知类型：审核驳回。
+     */
+    private static final int NOTIFICATION_TYPE_REVIEW_REJECTED = 3;
+
+    /**
      * 会议室封面图存储子目录。
      */
     private static final String ROOM_COVER_UPLOAD_SUB_DIR = "meeting-room";
@@ -168,6 +184,7 @@ public class AdminServiceImpl implements AdminService {
     private final RoomEquipmentMapper roomEquipmentMapper;
     private final EquipmentMapper equipmentMapper;
     private final ReservationStatusManager reservationStatusManager;
+    private final NotificationService notificationService;
 
     /**
      * 查询待审核预约列表。
@@ -362,6 +379,7 @@ public class AdminServiceImpl implements AdminService {
      * @param request       审核参数
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void reviewReservation(Long reservationId, AdminReviewReservationRequest request) {
         reservationStatusManager.refreshExpiredReservations();
         if (request == null) {
@@ -390,13 +408,14 @@ public class AdminServiceImpl implements AdminService {
         updateEntity.setReviewerId(admin.getId());
         updateEntity.setReviewedAt(LocalDateTime.now());
         updateEntity.setUpdatedAt(LocalDateTime.now());
+        String rejectReason = null;
 
         if (Boolean.TRUE.equals(request.getApproved())) {
             updateEntity.setStatus(RESERVATION_APPROVED);
             updateEntity.setRejectReason(null);
             updateEntity.setRemark("管理员审核通过");
         } else {
-            String rejectReason = cleanText(request.getRejectReason());
+            rejectReason = cleanText(request.getRejectReason());
             if (!StringUtils.hasText(rejectReason)) {
                 throw new IllegalArgumentException("驳回原因不能为空");
             }
@@ -413,6 +432,30 @@ public class AdminServiceImpl implements AdminService {
         );
         if (rows != 1) {
             throw new IllegalStateException("审核失败，请刷新后重试");
+        }
+
+        // 发送审核结果通知给预约用户
+        MeetingRoom room = meetingRoomMapper.selectById(reservation.getRoomId());
+        String roomName = room != null ? room.getName() : "会议室";
+        String dateText = reservation.getReservationDate().format(DATE_FORMATTER);
+        String timeSlot = reservation.getStartTime().format(TIME_FORMATTER)
+                        + "-" + reservation.getEndTime().format(TIME_FORMATTER);
+
+        if (Boolean.TRUE.equals(request.getApproved())) {
+            notificationService.createNotification(
+                    reservation.getUserId(),
+                    "预约已通过",
+                    "您在「" + roomName + "」" + dateText + " " + timeSlot + " 的预约已通过审核。",
+                    NOTIFICATION_TYPE_REVIEW_APPROVED, reservationId
+            );
+        } else {
+            notificationService.createNotification(
+                    reservation.getUserId(),
+                    "预约已驳回",
+                    "您在「" + roomName + "」" + dateText + " " + timeSlot
+                            + " 的预约已被驳回。原因：" + rejectReason,
+                    NOTIFICATION_TYPE_REVIEW_REJECTED, reservationId
+            );
         }
     }
 
@@ -847,6 +890,23 @@ public class AdminServiceImpl implements AdminService {
                             .in(Reservation::getId, conflictIds)
                             .in(Reservation::getStatus, RESERVATION_PENDING, RESERVATION_APPROVED)
             );
+
+            if (cancelledCount > 0) {
+                // 向已被协调取消的用户发送紧急占用取消通知。
+                String cancelReasonText = normalizeEmergencyCancelReason(request.getCancelReason());
+                String dateText = request.getReservationDate().format(DATE_FORMATTER);
+                for (Reservation conflict : conflictReservations) {
+                    String conflictTimeSlot = conflict.getStartTime().format(TIME_FORMATTER)
+                                    + "-" + conflict.getEndTime().format(TIME_FORMATTER);
+                    notificationService.createNotification(
+                            conflict.getUserId(),
+                            "预约已被取消",
+                            "您在「" + room.getName() + "」" + dateText + " " + conflictTimeSlot
+                                    + " 的预约因管理员紧急占用已取消。原因：" + cancelReasonText,
+                            NOTIFICATION_TYPE_EMERGENCY_CANCEL, conflict.getId()
+                    );
+                }
+            }
         }
 
         Reservation emergencyReservation = new Reservation();

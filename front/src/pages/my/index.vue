@@ -55,133 +55,143 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { reactive, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { request } from '../../utils/request'
+import { refreshNotificationBadge } from '../../utils/notification'
 
 /**
- * 个人中心页面
- * @description 展示用户信息、预约统计和功能菜单
+ * 用户信息。
  */
-export default {
-  data() {
-    return {
-      // 用户信息（默认数据）
-      userInfo: {
-        name: '未登录用户',
-        department: '普通用户',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop'
-      },
-      // 预约统计
-      stats: {
-        total: 15,
-        pending: 2,
-        approved: 10,
-        cancelled: 3
-      },
-      // 是否管理员
-      isAdmin: false
-    }
-  },
+const userInfo = reactive({
+  name: '未登录用户',
+  department: '普通用户',
+  avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop'
+})
 
-  /**
-   * 页面显示时同步登录态。
-   */
-  async onShow() {
-    this.loadUserInfo()
-    await this.loadReservationStats()
-  },
+/**
+ * 预约统计。
+ */
+const stats = reactive({
+  total: 15,
+  pending: 2,
+  approved: 10,
+  cancelled: 3
+})
 
-  methods: {
-    /**
-     * 加载本地缓存的用户信息。
-     */
-    loadUserInfo() {
-      const token = uni.getStorageSync('token')
-      if (!token) {
-        uni.reLaunch({ url: '/pages/login/index' })
-        return
-      }
+/**
+ * 是否管理员。
+ */
+const isAdmin = ref(false)
 
-      const storageUserInfo = uni.getStorageSync('userInfo') || {}
-      const role = Number(storageUserInfo.role)
-      this.userInfo = {
-        name: storageUserInfo.nickname || storageUserInfo.username || '未命名用户',
-        department: role === 1 ? '系统管理员' : '普通用户',
-        avatar: this.userInfo.avatar
-      }
-      this.isAdmin = role === 1
-    },
-
-    /**
-     * 加载预约统计数据。
-     */
-    async loadReservationStats() {
-      const storageUserInfo = uni.getStorageSync('userInfo') || {}
-      const userId = Number(storageUserInfo.id)
-      if (!Number.isInteger(userId) || userId <= 0) {
-        return
-      }
-
-      try {
-        const list = await request({
-          url: `/api/reservations/my?userId=${userId}`,
-          method: 'GET'
-        })
-        const reservationList = Array.isArray(list) ? list : []
-
-        // 根据状态键统计个人预约数据。
-        this.stats = {
-          total: reservationList.length,
-          pending: reservationList.filter(item => item.statusKey === 'pending').length,
-          approved: reservationList.filter(item => item.statusKey === 'approved').length,
-          cancelled: reservationList.filter(item => item.statusKey === 'cancelled').length
-        }
-      } catch (error) {
-        // 统计失败不阻塞页面主流程，这里仅静默处理。
-      }
-    },
-
-    /**
-     * 跳转到我的预约
-     */
-    goToBookingList() {
-      uni.switchTab({ url: '/pages/booking/index' })
-    },
-
-    /**
-     * 跳转到日历视图。
-     */
-    goToCalendar() {
-      uni.navigateTo({ url: '/pages/calendar/index' })
-    },
-
-    /**
-     * 跳转到管理员后台。
-     */
-    goToAdmin() {
-      uni.navigateTo({ url: '/pages/admin/index' })
-    },
-
-    /**
-     * 退出登录
-     */
-    handleLogout() {
-      uni.showModal({
-        title: '提示',
-        content: '确定要退出登录吗？',
-        success: (res) => {
-          if (res.confirm) {
-            // 清除登录状态
-            uni.removeStorageSync('token')
-            uni.removeStorageSync('userInfo')
-            uni.removeStorageSync('loginType')
-            // 跳转到登录页
-            uni.reLaunch({ url: '/pages/login/index' })
-          }
-        }
-      })
-    }
+/**
+ * 页面显示时同步登录态。
+ */
+onShow(async () => {
+  loadUserInfo()
+  const userId = getCurrentUserId()
+  if (userId) {
+    refreshNotificationBadge(userId)
   }
+  await loadReservationStats()
+})
+
+/**
+ * 获取当前登录用户ID。
+ * @returns {Number|null}
+ */
+function getCurrentUserId() {
+  const storageUserInfo = uni.getStorageSync('userInfo') || {}
+  const userId = Number(storageUserInfo.id)
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return null
+  }
+  return userId
+}
+
+/**
+ * 加载本地缓存的用户信息。
+ */
+function loadUserInfo() {
+  const token = uni.getStorageSync('token')
+  if (!token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+
+  const storageUserInfo = uni.getStorageSync('userInfo') || {}
+  const role = Number(storageUserInfo.role)
+  userInfo.name = storageUserInfo.nickname || storageUserInfo.username || '未命名用户'
+  userInfo.department = role === 1 ? '系统管理员' : '普通用户'
+  isAdmin.value = role === 1
+}
+
+/**
+ * 加载预约统计数据。
+ */
+async function loadReservationStats() {
+  const userId = getCurrentUserId()
+  if (!userId) {
+    return
+  }
+
+  try {
+    const list = await request({
+      url: `/api/reservations/my?userId=${userId}`,
+      method: 'GET'
+    })
+    const reservationList = Array.isArray(list) ? list : []
+
+    // 根据状态键统计个人预约数据。
+    stats.total = reservationList.length
+    stats.pending = reservationList.filter(item => item.statusKey === 'pending').length
+    stats.approved = reservationList.filter(item => item.statusKey === 'approved').length
+    stats.cancelled = reservationList.filter(item => item.statusKey === 'cancelled').length
+  } catch (error) {
+    // 统计失败不阻塞页面主流程，这里仅静默处理。
+  }
+}
+
+/**
+ * 跳转到我的预约。
+ */
+function goToBookingList() {
+  uni.switchTab({ url: '/pages/booking/index' })
+}
+
+/**
+ * 跳转到日历视图。
+ */
+function goToCalendar() {
+  uni.navigateTo({ url: '/pages/calendar/index' })
+}
+
+/**
+ * 跳转到管理员后台。
+ */
+function goToAdmin() {
+  uni.navigateTo({ url: '/pages/admin/index' })
+}
+
+/**
+ * 退出登录。
+ */
+function handleLogout() {
+  uni.showModal({
+    title: '提示',
+    content: '确定要退出登录吗？',
+    success: (res) => {
+      if (res.confirm) {
+        // 清除登录状态
+        uni.removeStorageSync('token')
+        uni.removeStorageSync('userInfo')
+        uni.removeStorageSync('loginType')
+        // 跳转到登录页
+        uni.reLaunch({ url: '/pages/login/index' })
+      }
+    }
+  })
 }
 </script>
 

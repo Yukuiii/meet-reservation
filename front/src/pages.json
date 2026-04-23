@@ -13,6 +13,12 @@
 			}
 		},
 		{
+			"path": "pages/message/index",
+			"style": {
+				"navigationBarTitleText": "消息"
+			}
+		},
+		{
 			"path": "pages/my/index",
 			"style": {
 				"navigationBarTitleText": "个人中心"
@@ -72,6 +78,12 @@
 				"text": "我的预约",
 				"iconPath": "static/tab/booking.png",
 				"selectedIconPath": "static/tab/booking-active.png"
+			},
+			{
+				"pagePath": "pages/message/index",
+				"text": "消息",
+				"iconPath": "static/tab/message.png",
+				"selectedIconPath": "static/tab/message-active.png"
 			},
 			{
 				"pagePath": "pages/my/index",

@@ -128,245 +128,268 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { computed, ref } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { buildAssetUrl, request } from '../../utils/request'
+import { refreshNotificationBadge } from '../../utils/notification'
 
 const DEFAULT_ROOM_IMAGE = '/images/meeting-room-default.jpg'
 
 /**
- * 首页 - 会议室列表
- * @description 展示会议室列表，支持按容量、设备、位置筛选
+ * 搜索关键词。
  */
-export default {
-  data() {
-    return {
-      // 搜索关键词
-      searchKeyword: '',
-      // 筛选条件
-      selectedCapacity: '',
-      selectedCapacityValue: '',
-      selectedEquipment: '',
-      selectedEquipmentValue: '',
-      selectedLocation: '',
-      selectedLocationValue: '',
-      // 弹窗显示状态
-      showCapacityPicker: false,
-      showEquipmentPicker: false,
-      showLocationPicker: false,
-      // 容量选项
-      capacityOptions: [
-        { label: '10人以下', value: 'small', max: 10 },
-        { label: '10-20人', value: 'medium', min: 10, max: 20 },
-        { label: '20人以上', value: 'large', min: 20 }
-      ],
-      // 设备选项（根据接口数据动态生成）
-      equipmentOptions: [],
-      // 位置选项（根据接口数据动态生成）
-      locationOptions: [],
-      // 会议室列表
-      roomList: [],
-      // 加载状态
-      loading: false
-    }
-  },
+const searchKeyword = ref('')
 
-  /**
-   * 页面加载时拉取会议室列表数据。
-   */
-  onLoad() {
-    this.loadRoomList()
-  },
+/**
+ * 筛选条件。
+ */
+const selectedCapacity = ref('')
+const selectedCapacityValue = ref('')
+const selectedEquipment = ref('')
+const selectedEquipmentValue = ref('')
+const selectedLocation = ref('')
+const selectedLocationValue = ref('')
 
-  /**
-   * 页面显示时刷新会议室列表。
-   */
-  onShow() {
-    this.loadRoomList()
-  },
+/**
+ * 弹窗显示状态。
+ */
+const showCapacityPicker = ref(false)
+const showEquipmentPicker = ref(false)
+const showLocationPicker = ref(false)
 
-  computed: {
-    /**
-     * 根据筛选条件过滤会议室列表
-     * @returns {Array} 过滤后的会议室列表
-     */
-    filteredRoomList() {
-      let result = this.roomList
+/**
+ * 容量选项。
+ */
+const capacityOptions = [
+  { label: '10人以下', value: 'small', max: 10 },
+  { label: '10-20人', value: 'medium', min: 10, max: 20 },
+  { label: '20人以上', value: 'large', min: 20 }
+]
 
-      // 按关键词搜索
-      if (this.searchKeyword) {
-        const keyword = this.searchKeyword.trim().toLowerCase()
-        result = result.filter(room =>
-          (room.name || '').toLowerCase().includes(keyword) ||
-          (room.location || '').toLowerCase().includes(keyword)
-        )
-      }
+/**
+ * 设备选项（根据接口数据动态生成）。
+ */
+const equipmentOptions = ref([])
 
-      // 按容量筛选
-      if (this.selectedCapacityValue) {
-        const option = this.capacityOptions.find(
-          o => o.value === this.selectedCapacityValue
-        )
-        if (option) {
-          result = result.filter(room => {
-            if (option.max && !option.min) {
-              return room.capacity <= option.max
-            } else if (option.min && option.max) {
-              return room.capacity >= option.min && room.capacity <= option.max
-            } else if (option.min && !option.max) {
-              return room.capacity >= option.min
-            }
-            return true
-          })
+/**
+ * 位置选项（根据接口数据动态生成）。
+ */
+const locationOptions = ref([])
+
+/**
+ * 会议室列表。
+ */
+const roomList = ref([])
+
+/**
+ * 加载状态。
+ */
+const loading = ref(false)
+
+/**
+ * 根据筛选条件过滤会议室列表。
+ * @returns {Array} 过滤后的会议室列表
+ */
+const filteredRoomList = computed(() => {
+  let result = roomList.value
+
+  // 按关键词搜索
+  if (searchKeyword.value) {
+    const keyword = searchKeyword.value.trim().toLowerCase()
+    result = result.filter(room =>
+      (room.name || '').toLowerCase().includes(keyword) ||
+      (room.location || '').toLowerCase().includes(keyword)
+    )
+  }
+
+  // 按容量筛选
+  if (selectedCapacityValue.value) {
+    const option = capacityOptions.find(
+      o => o.value === selectedCapacityValue.value
+    )
+    if (option) {
+      result = result.filter(room => {
+        if (option.max && !option.min) {
+          return room.capacity <= option.max
+        } else if (option.min && option.max) {
+          return room.capacity >= option.min && room.capacity <= option.max
+        } else if (option.min && !option.max) {
+          return room.capacity >= option.min
         }
-      }
-
-      // 按设备筛选
-      if (this.selectedEquipmentValue) {
-        result = result.filter(room =>
-          Array.isArray(room.equipment) &&
-            room.equipment.includes(this.selectedEquipmentValue)
-          )
-      }
-
-      // 按位置筛选
-      if (this.selectedLocationValue) {
-        result = result.filter(room =>
-          room.locationBuilding === this.selectedLocationValue
-        )
-      }
-
-      return result
-    }
-  },
-
-  methods: {
-    /**
-     * 拉取会议室列表。
-     */
-    async loadRoomList() {
-      this.loading = true
-      try {
-        const list = await request({
-          url: '/api/meeting-rooms',
-          method: 'GET'
-        })
-        this.roomList = Array.isArray(list)
-          ? list.map(item => ({
-            ...item,
-            image: buildAssetUrl(item.image || DEFAULT_ROOM_IMAGE)
-          }))
-          : []
-        this.buildFilterOptions()
-      } catch (error) {
-        uni.showToast({ title: error.message || '加载会议室失败', icon: 'none' })
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /**
-     * 根据会议室数据构建筛选选项。
-     */
-    buildFilterOptions() {
-      const equipmentSet = new Set()
-      const buildingSet = new Set()
-
-      // 聚合所有设备与楼栋，保证筛选项与服务端数据一致。
-      this.roomList.forEach(room => {
-        if (Array.isArray(room.equipment)) {
-          room.equipment.forEach(item => {
-            if (item) {
-              equipmentSet.add(item)
-            }
-          })
-        }
-        if (room.locationBuilding) {
-          buildingSet.add(room.locationBuilding)
-        }
-      })
-
-      this.equipmentOptions = Array.from(equipmentSet)
-        .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
-        .map(item => ({ label: item, value: item }))
-
-      this.locationOptions = Array.from(buildingSet)
-        .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
-        .map(item => ({
-          label: item.endsWith('栋') ? item : `${item}栋`,
-          value: item
-        }))
-
-      // 如果接口返回的数据中不存在当前已选条件，自动清空，避免筛选锁死。
-      if (this.selectedEquipmentValue && !equipmentSet.has(this.selectedEquipmentValue)) {
-        this.selectedEquipment = ''
-        this.selectedEquipmentValue = ''
-      }
-      if (this.selectedLocationValue && !buildingSet.has(this.selectedLocationValue)) {
-        this.selectedLocation = ''
-        this.selectedLocationValue = ''
-      }
-    },
-
-    /**
-     * 处理搜索输入
-     */
-    handleSearch() {
-      // 搜索逻辑已在 computed 中实现
-    },
-
-    /**
-     * 选择容量
-     * @param {Object} item 选中的容量选项
-     */
-    selectCapacity(item) {
-      this.selectedCapacity = item.label
-      this.selectedCapacityValue = item.value
-      this.showCapacityPicker = false
-    },
-
-    /**
-     * 选择设备
-     * @param {Object} item 选中的设备选项
-     */
-    selectEquipment(item) {
-      this.selectedEquipment = item.label
-      this.selectedEquipmentValue = item.value
-      this.showEquipmentPicker = false
-    },
-
-    /**
-     * 选择位置
-     * @param {Object} item 选中的位置选项
-     */
-    selectLocation(item) {
-      this.selectedLocation = item.label
-      this.selectedLocationValue = item.value
-      this.showLocationPicker = false
-    },
-
-    /**
-     * 重置筛选条件
-     */
-    resetFilter() {
-      this.searchKeyword = ''
-      this.selectedCapacity = ''
-      this.selectedCapacityValue = ''
-      this.selectedEquipment = ''
-      this.selectedEquipmentValue = ''
-      this.selectedLocation = ''
-      this.selectedLocationValue = ''
-    },
-
-    /**
-     * 跳转到会议室详情页
-     * @param {Number} id 会议室ID
-     */
-    goToRoomDetail(id) {
-      uni.navigateTo({
-        url: `/pages/room/detail?id=${id}`
+        return true
       })
     }
   }
+
+  // 按设备筛选
+  if (selectedEquipmentValue.value) {
+    result = result.filter(room =>
+      Array.isArray(room.equipment) &&
+        room.equipment.includes(selectedEquipmentValue.value)
+      )
+  }
+
+  // 按位置筛选
+  if (selectedLocationValue.value) {
+    result = result.filter(room =>
+      room.locationBuilding === selectedLocationValue.value
+    )
+  }
+
+  return result
+})
+
+/**
+ * 页面加载时拉取会议室列表数据。
+ */
+onLoad(() => {
+  loadRoomList()
+})
+
+/**
+ * 页面显示时刷新会议室列表。
+ */
+onShow(() => {
+  loadRoomList()
+  refreshMessageBadge()
+})
+
+/**
+ * 刷新当前用户的消息角标。
+ */
+function refreshMessageBadge() {
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  if (userInfo.id) {
+    refreshNotificationBadge(userInfo.id)
+  }
+}
+
+/**
+ * 拉取会议室列表。
+ */
+async function loadRoomList() {
+  loading.value = true
+  try {
+    const list = await request({
+      url: '/api/meeting-rooms',
+      method: 'GET'
+    })
+    roomList.value = Array.isArray(list)
+      ? list.map(item => ({
+        ...item,
+        image: buildAssetUrl(item.image || DEFAULT_ROOM_IMAGE)
+      }))
+      : []
+    buildFilterOptions()
+  } catch (error) {
+    uni.showToast({ title: error.message || '加载会议室失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 根据会议室数据构建筛选选项。
+ */
+function buildFilterOptions() {
+  const equipmentSet = new Set()
+  const buildingSet = new Set()
+
+  // 聚合所有设备与楼栋，保证筛选项与服务端数据一致。
+  roomList.value.forEach(room => {
+    if (Array.isArray(room.equipment)) {
+      room.equipment.forEach(item => {
+        if (item) {
+          equipmentSet.add(item)
+        }
+      })
+    }
+    if (room.locationBuilding) {
+      buildingSet.add(room.locationBuilding)
+    }
+  })
+
+  equipmentOptions.value = Array.from(equipmentSet)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .map(item => ({ label: item, value: item }))
+
+  locationOptions.value = Array.from(buildingSet)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .map(item => ({
+      label: item.endsWith('栋') ? item : `${item}栋`,
+      value: item
+    }))
+
+  // 如果接口返回的数据中不存在当前已选条件，自动清空，避免筛选锁死。
+  if (selectedEquipmentValue.value && !equipmentSet.has(selectedEquipmentValue.value)) {
+    selectedEquipment.value = ''
+    selectedEquipmentValue.value = ''
+  }
+  if (selectedLocationValue.value && !buildingSet.has(selectedLocationValue.value)) {
+    selectedLocation.value = ''
+    selectedLocationValue.value = ''
+  }
+}
+
+/**
+ * 处理搜索输入。
+ */
+function handleSearch() {
+  // 搜索逻辑已在 computed 中实现
+}
+
+/**
+ * 选择容量。
+ * @param {Object} item 选中的容量选项
+ */
+function selectCapacity(item) {
+  selectedCapacity.value = item.label
+  selectedCapacityValue.value = item.value
+  showCapacityPicker.value = false
+}
+
+/**
+ * 选择设备。
+ * @param {Object} item 选中的设备选项
+ */
+function selectEquipment(item) {
+  selectedEquipment.value = item.label
+  selectedEquipmentValue.value = item.value
+  showEquipmentPicker.value = false
+}
+
+/**
+ * 选择位置。
+ * @param {Object} item 选中的位置选项
+ */
+function selectLocation(item) {
+  selectedLocation.value = item.label
+  selectedLocationValue.value = item.value
+  showLocationPicker.value = false
+}
+
+/**
+ * 重置筛选条件。
+ */
+function resetFilter() {
+  searchKeyword.value = ''
+  selectedCapacity.value = ''
+  selectedCapacityValue.value = ''
+  selectedEquipment.value = ''
+  selectedEquipmentValue.value = ''
+  selectedLocation.value = ''
+  selectedLocationValue.value = ''
+}
+
+/**
+ * 跳转到会议室详情页。
+ * @param {Number} id 会议室ID
+ */
+function goToRoomDetail(id) {
+  uni.navigateTo({
+    url: `/pages/room/detail?id=${id}`
+  })
 }
 </script>
 

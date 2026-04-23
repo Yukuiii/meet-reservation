@@ -218,3 +218,23 @@ ON DUPLICATE KEY UPDATE
 `cancel_reason` = VALUES(`cancel_reason`),
 `cancelled_at` = VALUES(`cancelled_at`),
 `remark` = VALUES(`remark`);
+
+-- ============================================
+-- 站内通知表
+-- ============================================
+CREATE TABLE IF NOT EXISTS `notification` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '通知ID',
+    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收通知的用户ID',
+    `title` VARCHAR(128) NOT NULL COMMENT '通知标题',
+    `content` VARCHAR(1024) NOT NULL COMMENT '通知内容',
+    `type` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '通知类型：0-系统通知，1-紧急占用取消，2-审核通过，3-审核驳回',
+    `reservation_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '关联预约ID',
+    `is_read` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '是否已读：0-未读，1-已读',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_id` (`user_id`),
+    KEY `idx_user_read` (`user_id`, `is_read`),
+    KEY `idx_type` (`type`),
+    KEY `idx_reservation_id` (`reservation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='站内通知表';

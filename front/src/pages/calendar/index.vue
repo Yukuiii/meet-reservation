@@ -65,107 +65,109 @@
   </view>
 </template>
 
-<script>
+<script setup>
+import { computed, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { request } from '../../utils/request'
 
 /**
- * 日历页面
- * @description 展示会议室预约按日/周视图
+ * 当前用户ID。
  */
-export default {
-  data() {
-    return {
-      // 当前用户ID
-      userId: null,
-      // 当前视图类型：day/week
-      viewType: 'day',
-      // 日历区间
-      startDate: '',
-      endDate: '',
-      // 分日数据
-      dayList: [],
-      // 加载状态
-      loading: false
-    }
-  },
+const userId = ref(null)
 
-  /**
-   * 页面加载。
-   */
-  async onLoad() {
-    const userInfo = uni.getStorageSync('userInfo') || {}
-    const userId = Number(userInfo.id)
-    if (!Number.isInteger(userId) || userId <= 0) {
-      uni.showToast({ title: '请先登录', icon: 'none' })
-      setTimeout(() => {
-        uni.reLaunch({ url: '/pages/login/index' })
-      }, 600)
-      return
-    }
+/**
+ * 当前视图类型：day/week。
+ */
+const viewType = ref('day')
 
-    this.userId = userId
-    await this.loadCalendar()
-  },
+/**
+ * 日历区间。
+ */
+const startDate = ref('')
+const endDate = ref('')
 
-  computed: {
-    /**
-     * 区间文案。
-     * @returns {String}
-     */
-    rangeText() {
-      if (!this.startDate) {
-        return ''
-      }
-      if (this.startDate === this.endDate) {
-        return this.startDate
-      }
-      return `${this.startDate} - ${this.endDate}`
-    },
+/**
+ * 分日数据。
+ */
+const dayList = ref([])
 
-    /**
-     * 预约总数。
-     * @returns {Number}
-     */
-    totalCount() {
-      return this.dayList.reduce((total, day) => total + (day.totalCount || 0), 0)
-    }
-  },
+/**
+ * 加载状态。
+ */
+const loading = ref(false)
 
-  methods: {
-    /**
-     * 拉取日历数据。
-     */
-    async loadCalendar() {
-      this.loading = true
-      try {
-        const data = await request({
-          url: `/api/reservations/calendar?userId=${this.userId}&viewType=${this.viewType}`,
-          method: 'GET'
-        })
-
-        this.startDate = data.startDate || ''
-        this.endDate = data.endDate || ''
-        this.dayList = Array.isArray(data.days) ? data.days : []
-      } catch (error) {
-        uni.showToast({ title: error.message || '日历数据加载失败', icon: 'none' })
-        this.dayList = []
-      } finally {
-        this.loading = false
-      }
-    },
-
-    /**
-     * 切换视图类型。
-     * @param {String} viewType 视图类型
-     */
-    async changeViewType(viewType) {
-      if (this.viewType === viewType) {
-        return
-      }
-      this.viewType = viewType
-      await this.loadCalendar()
-    }
+/**
+ * 区间文案。
+ * @returns {String}
+ */
+const rangeText = computed(() => {
+  if (!startDate.value) {
+    return ''
   }
+  if (startDate.value === endDate.value) {
+    return startDate.value
+  }
+  return `${startDate.value} - ${endDate.value}`
+})
+
+/**
+ * 预约总数。
+ * @returns {Number}
+ */
+const totalCount = computed(() =>
+  dayList.value.reduce((total, day) => total + (day.totalCount || 0), 0)
+)
+
+/**
+ * 页面加载。
+ */
+onLoad(async () => {
+  const userInfo = uni.getStorageSync('userInfo') || {}
+  const storageUserId = Number(userInfo.id)
+  if (!Number.isInteger(storageUserId) || storageUserId <= 0) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    setTimeout(() => {
+      uni.reLaunch({ url: '/pages/login/index' })
+    }, 600)
+    return
+  }
+
+  userId.value = storageUserId
+  await loadCalendar()
+})
+
+/**
+ * 拉取日历数据。
+ */
+async function loadCalendar() {
+  loading.value = true
+  try {
+    const data = await request({
+      url: `/api/reservations/calendar?userId=${userId.value}&viewType=${viewType.value}`,
+      method: 'GET'
+    })
+
+    startDate.value = data.startDate || ''
+    endDate.value = data.endDate || ''
+    dayList.value = Array.isArray(data.days) ? data.days : []
+  } catch (error) {
+    uni.showToast({ title: error.message || '日历数据加载失败', icon: 'none' })
+    dayList.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 切换视图类型。
+ * @param {String} nextViewType 视图类型
+ */
+async function changeViewType(nextViewType) {
+  if (viewType.value === nextViewType) {
+    return
+  }
+  viewType.value = nextViewType
+  await loadCalendar()
 }
 </script>
 
