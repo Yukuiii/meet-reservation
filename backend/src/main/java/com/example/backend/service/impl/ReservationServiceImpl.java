@@ -87,6 +87,7 @@ public class ReservationServiceImpl implements ReservationService {
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final ReservationMapper reservationMapper;
     private final MeetingRoomMapper meetingRoomMapper;
@@ -294,6 +295,57 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     /**
+     * 预约签到。
+     *
+     * @param userId        用户ID
+     * @param reservationId 预约ID
+     */
+    @Override
+    public void checkInReservation(Long userId, Long reservationId) {
+        reservationStatusManager.refreshExpiredReservations();
+        ensureUserCanReserve(userId);
+        if (reservationId == null || reservationId <= 0) {
+            throw new IllegalArgumentException("预约ID不合法");
+        }
+
+        Reservation reservation = reservationMapper.selectOne(
+                new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getId, reservationId)
+                        .eq(Reservation::getUserId, userId)
+                        .last("limit 1")
+        );
+        if (reservation == null) {
+            throw new IllegalArgumentException("预约记录不存在或无权签到");
+        }
+        if (!Integer.valueOf(STATUS_APPROVED).equals(reservation.getStatus())) {
+            throw new IllegalArgumentException("仅已通过预约支持签到");
+        }
+        if (reservation.getCheckInAt() != null) {
+            throw new IllegalArgumentException("该预约已签到");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        ensureCheckInWindow(reservation, now);
+
+        Reservation updateEntity = new Reservation();
+        updateEntity.setCheckInAt(now);
+        updateEntity.setCheckInUserId(userId);
+        updateEntity.setUpdatedAt(now);
+
+        int rows = reservationMapper.update(
+                updateEntity,
+                new LambdaQueryWrapper<Reservation>()
+                        .eq(Reservation::getId, reservationId)
+                        .eq(Reservation::getUserId, userId)
+                        .eq(Reservation::getStatus, STATUS_APPROVED)
+                        .isNull(Reservation::getCheckInAt)
+        );
+        if (rows != 1) {
+            throw new IllegalStateException("签到失败，请刷新后重试");
+        }
+    }
+
+    /**
      * 取消预约。
      *
      * @param userId        用户ID
@@ -472,6 +524,51 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     /**
+     * 校验当前时间是否位于预约签到窗口内。
+     *
+     * @param reservation 预约实体
+     * @param now         当前时间
+     */
+    private void ensureCheckInWindow(Reservation reservation, LocalDateTime now) {
+        if (!isWithinCheckInWindow(reservation, now)) {
+            throw new IllegalArgumentException("只能在预约开始后、结束前签到");
+        }
+    }
+
+    /**
+     * 判断预约当前是否允许签到。
+     *
+     * @param reservation 预约实体
+     * @return 是否允许签到
+     */
+    private boolean canCheckInReservation(Reservation reservation) {
+        return reservation != null
+                && Integer.valueOf(STATUS_APPROVED).equals(reservation.getStatus())
+                && reservation.getCheckInAt() == null
+                && isWithinCheckInWindow(reservation, LocalDateTime.now());
+    }
+
+    /**
+     * 判断当前时间是否处于预约时间窗口。
+     *
+     * @param reservation 预约实体
+     * @param now         当前时间
+     * @return 是否处于预约时间窗口
+     */
+    private boolean isWithinCheckInWindow(Reservation reservation, LocalDateTime now) {
+        if (reservation == null
+                || reservation.getReservationDate() == null
+                || reservation.getStartTime() == null
+                || reservation.getEndTime() == null
+                || now == null) {
+            return false;
+        }
+        LocalDateTime startDateTime = LocalDateTime.of(reservation.getReservationDate(), reservation.getStartTime());
+        LocalDateTime endDateTime = LocalDateTime.of(reservation.getReservationDate(), reservation.getEndTime());
+        return !now.isBefore(startDateTime) && now.isBefore(endDateTime);
+    }
+
+    /**
      * 标准化日历视图类型。
      *
      * @param viewType 原始视图类型
@@ -624,6 +721,19 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     /**
+     * 日期时间格式化为 yyyy-MM-dd HH:mm。
+     *
+     * @param dateTime 日期时间
+     * @return 日期时间字符串
+     */
+    private String formatDateTime(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return "";
+        }
+        return DATE_TIME_FORMATTER.format(dateTime);
+    }
+
+    /**
      * 状态码转换为文案。
      *
      * @param status 状态码
@@ -711,7 +821,9 @@ public class ReservationServiceImpl implements ReservationService {
         item.setCancelReason(reservation.getCancelReason());
         item.setRejectReason(reservation.getRejectReason());
         item.setRemark(reservation.getRemark());
+        item.setCheckInAt(formatDateTime(reservation.getCheckInAt()));
         item.setCanCancel(reservationStatusManager.canCancelReservation(reservation));
+        item.setCanCheckIn(canCheckInReservation(reservation));
         item.setCanReportRepair(Integer.valueOf(STATUS_FINISHED).equals(reservation.getStatus()));
         return item;
     }

@@ -59,6 +59,14 @@ public interface ReservationService {
     UserReservationVO getReservationDetail(Long userId, Long reservationId);
 
     /**
+     * 预约签到。
+     *
+     * @param userId        用户ID
+     * @param reservationId 预约ID
+     */
+    void checkInReservation(Long userId, Long reservationId);
+
+    /**
      * 取消预约。
      *
      * @param userId        用户ID

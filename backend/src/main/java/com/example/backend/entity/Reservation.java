@@ -119,6 +119,18 @@ public class Reservation implements Serializable {
     private LocalDateTime cancelledAt;
 
     /**
+     * 签到时间。
+     */
+    @TableField("check_in_at")
+    private LocalDateTime checkInAt;
+
+    /**
+     * 签到用户ID。
+     */
+    @TableField("check_in_user_id")
+    private Long checkInUserId;
+
+    /**
      * 备注。
      */
     @TableField("remark")

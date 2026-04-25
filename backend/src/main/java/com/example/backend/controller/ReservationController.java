@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import com.example.backend.common.ApiResponse;
 import com.example.backend.dto.CancelReservationRequest;
+import com.example.backend.dto.CheckInReservationRequest;
 import com.example.backend.dto.CreateReservationRequest;
 import com.example.backend.service.ReservationService;
 import com.example.backend.vo.CreateReservationResponseVO;
@@ -130,6 +131,29 @@ public class ReservationController {
             return ApiResponse.fail(e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail("查询预约详情失败");
+        }
+    }
+
+    /**
+     * 预约签到。
+     *
+     * @param reservationId 预约ID
+     * @param request       签到参数
+     * @return 统一响应
+     */
+    @PostMapping("/{reservationId}/check-in")
+    public ApiResponse<Void> checkInReservation(@PathVariable Long reservationId,
+                                                @RequestBody CheckInReservationRequest request) {
+        try {
+            if (request == null) {
+                return ApiResponse.fail("签到参数不能为空");
+            }
+            reservationService.checkInReservation(request.getUserId(), reservationId);
+            return ApiResponse.success("签到成功", null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail("签到失败，请稍后重试");
         }
     }
 

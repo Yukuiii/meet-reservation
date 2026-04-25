@@ -94,9 +94,19 @@ public class UserReservationVO {
     private String remark;
 
     /**
+     * 签到时间，格式：yyyy-MM-dd HH:mm。
+     */
+    private String checkInAt;
+
+    /**
      * 是否允许取消。
      */
     private Boolean canCancel;
+
+    /**
+     * 是否允许签到。
+     */
+    private Boolean canCheckIn;
 
     /**
      * 是否允许设备报修。

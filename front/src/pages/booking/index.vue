@@ -66,7 +66,16 @@
             <text class="value">{{ item.purpose }}</text>
           </view>
         </view>
-        <view class="card-footer" v-if="item.canCancel || item.canReportRepair">
+        <view class="card-footer" v-if="item.canCheckIn || item.canCancel || item.canReportRepair">
+          <button
+            class="check-in-btn"
+            v-if="item.canCheckIn"
+            size="mini"
+            :disabled="signingInId === item.id"
+            @click.stop="checkInBooking(item.id)"
+          >
+            {{ signingInId === item.id ? '签到中...' : '签到' }}
+          </button>
           <button
             class="cancel-btn"
             v-if="item.canCancel"
@@ -218,6 +227,11 @@ const repairForm = ref({
 })
 
 /**
+ * 正在签到的预约ID。
+ */
+const signingInId = ref(null)
+
+/**
  * 根据当前标签筛选预约列表。
  * @returns {Array} 筛选结果
  */
@@ -351,6 +365,9 @@ function buildDetailItems(detail) {
   if (detail.rejectReason) {
     nextDetailItems.push({ label: '拒绝原因', value: detail.rejectReason })
   }
+  if (detail.checkInAt) {
+    nextDetailItems.push({ label: '签到时间', value: detail.checkInAt })
+  }
   if (detail.remark) {
     nextDetailItems.push({ label: '备注', value: detail.remark })
   }
@@ -453,6 +470,34 @@ async function submitRepair() {
     uni.showToast({ title: error.message || '提交报修失败', icon: 'none' })
   } finally {
     repairSubmitting.value = false
+  }
+}
+
+/**
+ * 预约签到。
+ * @param {Number} id 预约ID
+ */
+async function checkInBooking(id) {
+  const userId = getCurrentUserId()
+  if (!userId || signingInId.value === id) {
+    return
+  }
+
+  signingInId.value = id
+  try {
+    await request({
+      url: `/api/reservations/${id}/check-in`,
+      method: 'POST',
+      data: {
+        userId
+      }
+    })
+    uni.showToast({ title: '签到成功', icon: 'success' })
+    loadBookingList()
+  } catch (error) {
+    uni.showToast({ title: error.message || '签到失败', icon: 'none' })
+  } finally {
+    signingInId.value = null
   }
 }
 
@@ -622,6 +667,24 @@ function cancelBooking(id) {
   border-top: 1rpx solid #eee;
 }
 
+.check-in-btn {
+  font-size: 24rpx;
+  color: #fff;
+  background-color: #4caf50;
+  border: none;
+  padding: 0 24rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+}
+
+.check-in-btn::after {
+  border: none;
+}
+
+.check-in-btn[disabled] {
+  opacity: 0.7;
+}
+
 .cancel-btn {
   font-size: 24rpx;
   color: #f44336;
@@ -630,6 +693,7 @@ function cancelBooking(id) {
   padding: 0 24rpx;
   height: 56rpx;
   line-height: 56rpx;
+  margin-left: 12rpx;
 }
 
 .cancel-btn::after {
