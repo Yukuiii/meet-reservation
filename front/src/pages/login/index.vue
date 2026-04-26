@@ -33,14 +33,20 @@
         />
       </view>
 
-      <view class="form-item">
+      <view class="form-item password-item">
         <input
-          class="input"
-          type="password"
+          class="input password-input"
+          type="text"
+          :password="!passwordVisible"
           v-model="formData.password"
           placeholder="请输入密码"
           placeholder-class="placeholder"
         />
+        <view class="password-toggle" @click="togglePasswordVisible">
+          <view class="eye-icon" :class="{ closed: !passwordVisible }">
+            <view class="eye-pupil" />
+          </view>
+        </view>
       </view>
 
       <button class="login-btn" :disabled="loading" @click="handleLogin">
@@ -75,6 +81,11 @@ const formData = reactive({
 const loading = ref(false)
 
 /**
+ * 密码可见状态。
+ */
+const passwordVisible = ref(false)
+
+/**
  * 页面加载时回填用户名。
  * @param {Object} options 页面参数
  */
@@ -93,6 +104,13 @@ function switchLoginType(loginType) {
     return
   }
   formData.loginType = loginType
+}
+
+/**
+ * 切换密码可见状态。
+ */
+function togglePasswordVisible() {
+  passwordVisible.value = !passwordVisible.value
 }
 
 /**
@@ -212,6 +230,7 @@ function goToRegister() {
 
 .form-item {
   margin-bottom: 30rpx;
+  position: relative;
 }
 
 .form-item .input {
@@ -222,6 +241,53 @@ function goToRegister() {
   border-radius: 10rpx;
   font-size: 28rpx;
   box-sizing: border-box;
+}
+
+.password-item .password-input {
+  padding-right: 90rpx;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 24rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-icon {
+  width: 36rpx;
+  height: 22rpx;
+  border: 2rpx solid #999;
+  border-radius: 50%;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.eye-icon.closed::after {
+  content: '';
+  position: absolute;
+  left: -3rpx;
+  top: 9rpx;
+  width: 40rpx;
+  height: 2rpx;
+  background-color: #999;
+  transform: rotate(-25deg);
+}
+
+.eye-pupil {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background-color: #999;
+  transform: translate(-50%, -50%);
 }
 
 .placeholder {
