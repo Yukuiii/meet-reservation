@@ -32,17 +32,17 @@
     <!-- 功能菜单 -->
     <view class="menu-section">
       <view class="menu-item" @click="goToBookingList">
-        <text class="menu-icon">📋</text>
+        <uni-icons class="menu-icon" type="list" size="22" color="#666666" />
         <text class="menu-text">我的预约</text>
         <text class="menu-arrow">›</text>
       </view>
       <view class="menu-item" @click="goToCalendar">
-        <text class="menu-icon">🗓️</text>
+        <uni-icons class="menu-icon" type="calendar" size="22" color="#666666" />
         <text class="menu-text">日历视图</text>
         <text class="menu-arrow">›</text>
       </view>
       <view class="menu-item" v-if="isAdmin" @click="goToAdmin">
-        <text class="menu-icon">🛠️</text>
+        <uni-icons class="menu-icon" type="gear" size="22" color="#666666" />
         <text class="menu-text">管理员后台</text>
         <text class="menu-arrow">›</text>
       </view>
@@ -58,6 +58,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import UniIcons from '@dcloudio/uni-ui/lib/uni-icons/uni-icons.vue'
 import { request } from '../../utils/request'
 import { refreshNotificationBadge } from '../../utils/notification'
 
@@ -284,7 +285,8 @@ function handleLogout() {
 }
 
 .menu-icon {
-  font-size: 40rpx;
+  width: 40rpx;
+  text-align: center;
   margin-right: 20rpx;
 }
 
