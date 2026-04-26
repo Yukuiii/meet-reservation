@@ -43,9 +43,7 @@
           placeholder-class="placeholder"
         />
         <view class="password-toggle" @click="togglePasswordVisible">
-          <view class="eye-icon" :class="{ closed: !passwordVisible }">
-            <view class="eye-pupil" />
-          </view>
+          <uni-icons :type="passwordVisible ? 'eye-filled' : 'eye-slash-filled'" size="22" color="#999999" />
         </view>
       </view>
 
@@ -64,6 +62,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import UniIcons from '@dcloudio/uni-ui/lib/uni-icons/uni-icons.vue'
 import { request } from '../../utils/request'
 
 /**
@@ -257,37 +256,6 @@ function goToRegister() {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.eye-icon {
-  width: 36rpx;
-  height: 22rpx;
-  border: 2rpx solid #999;
-  border-radius: 50%;
-  position: relative;
-  box-sizing: border-box;
-}
-
-.eye-icon.closed::after {
-  content: '';
-  position: absolute;
-  left: -3rpx;
-  top: 9rpx;
-  width: 40rpx;
-  height: 2rpx;
-  background-color: #999;
-  transform: rotate(-25deg);
-}
-
-.eye-pupil {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 8rpx;
-  height: 8rpx;
-  border-radius: 50%;
-  background-color: #999;
-  transform: translate(-50%, -50%);
 }
 
 .placeholder {
